@@ -267,6 +267,30 @@ function PlayerAvatar({ avatar, initialsText, color, size = 46 }) {
 // thumbnail.svg). Falls back to an empty placeholder block whenever there's
 // no mapid, the map isn't in the `maps` table yet, or it's made up of shapes
 // the thumbnail generator can't draw (currently box shapes only).
+// Replays from bulk-imported cycles (cycle 5) have no real upload date, only
+// the import date. The API sends `estimated_day` ('YYYY-MM-DD') for those,
+// modelled from replay IDs, and we show it as an approximate week. Real
+// dates (cycle 6 onward) still come from fetched_at.
+const ESTIMATED_DATE_NOTE =
+  "Estimated from the replay ID. Cycle 5 dates are reconstructed from " +
+  "cycle date estimates by Salama & Legendboss123 and cycle 6 upload patterns.";
+
+function formatReplayDate(item) {
+  if (item.estimated_day) {
+    const [y, m, d] = item.estimated_day.split("-").map(Number);
+    const day = new Date(y, m - 1, d); // local date, no timezone shift
+    const monday = new Date(day);
+    monday.setDate(day.getDate() - ((day.getDay() + 6) % 7));
+    const label = monday.toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+    return `≈ week of ${label}`;
+  }
+  return item.fetched_at ? new Date(item.fetched_at).toLocaleDateString() : "Unknown";
+}
+
 function MapThumbnail({ mapid }) {
   const [failed, setFailed] = useState(false);
 
@@ -798,9 +822,11 @@ function App() {
                       <div className="result-line result-line--muted">
                         {(item.players || []).join(", ") || "No players"}
                       </div>
-                      <div className="result-line result-line--muted">
-                        Cycle {item.cycle} ·{" "}
-                        {item.fetched_at ? new Date(item.fetched_at).toLocaleDateString() : "Unknown"}
+                      <div
+                        className="result-line result-line--muted"
+                        title={item.estimated_day ? ESTIMATED_DATE_NOTE : undefined}
+                      >
+                        Cycle {item.cycle} · {formatReplayDate(item)}
                       </div>
                     </div>
                   </button>

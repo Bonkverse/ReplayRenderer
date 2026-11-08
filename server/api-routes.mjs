@@ -214,6 +214,12 @@ export function registerApiRoutes(app, pool) {
       const total = countResult.rows[0]?.count ?? 0;
       const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
+      // Estimated dates: cycles whose replays were bulk-imported (cycle 5
+      // came from the Mongo archive, so its fetched_at is just the import
+      // date) get an approximate upload day from replay_cycle_days, a
+      // per-day replay-ID range table modelled on cycle 6's upload pattern.
+      // `estimated_day` is a plain 'YYYY-MM-DD' string so the browser shows
+      // the same day regardless of timezone; `played_at` is what we sort on.
       const result = await pool.query(
         `
         SELECT
@@ -222,6 +228,8 @@ export function registerApiRoutes(app, pool) {
           r.mapid::text AS mapid,
           m.name AS mapname,
           r.fetched_at,
+          to_char(rcd.day, 'YYYY-MM-DD') AS estimated_day,
+          COALESCE(rcd.day::timestamptz, r.fetched_at) AS played_at,
           COALESCE(
             array_remove(array_agg(rp.username ORDER BY rp.username), NULL),
             '{}'
@@ -237,9 +245,12 @@ export function registerApiRoutes(app, pool) {
           ORDER BY m2.version DESC
           LIMIT 1
         ) m ON true
+        LEFT JOIN replay_cycle_days rcd
+          ON rcd.cycle = r.cycle
+          AND r.id BETWEEN rcd.first_id AND rcd.last_id
         WHERE ${whereClause}
-        GROUP BY r.cycle, r.id, r.mapid, m.name, r.fetched_at
-        ORDER BY r.fetched_at DESC
+        GROUP BY r.cycle, r.id, r.mapid, m.name, r.fetched_at, rcd.day
+        ORDER BY played_at DESC, r.id DESC
         LIMIT $${baseParams.length + 1} OFFSET $${baseParams.length + 2}
         `,
         [...baseParams, PAGE_SIZE, offset]
