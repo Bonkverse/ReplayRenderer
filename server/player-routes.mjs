@@ -310,6 +310,36 @@ export function registerPlayerRoutes(app, pool, { enrichKeys, sendDbError }) {
     }
   });
 
+  // ─── Bulk lookup by exact name ──────────────────────────────────────────
+  //
+  // GET /api/players/lookup?names=a&names=b (up to 60) → replay totals for
+  // each registered name that has replays, for player search cards on
+  // Bonkverse. Names without replays are simply missing from the results.
+  app.get("/api/players/lookup", async (req, res) => {
+    const raw = req.query.names;
+    const names = [...new Set((Array.isArray(raw) ? raw : raw == null ? [] : [raw])
+      .map((n) => validPlayerName(n))
+      .filter(Boolean)
+      .map((n) => n.toLowerCase()))].slice(0, 60);
+    if (names.length === 0) return res.json({ results: [] });
+    try {
+      const result = await pool.query(
+        `SELECT (array_agg(rp.username ORDER BY rp.cycle DESC, rp.replay_id DESC))[1] AS username,
+                count(*)::int AS games,
+                (array_agg(rp.level ORDER BY rp.cycle DESC, rp.replay_id DESC))[1] AS level
+         FROM replay_participants rp
+         WHERE NOT rp.guest AND lower(rp.username) = ANY($1::text[])
+         GROUP BY lower(rp.username)`,
+        [names]
+      );
+      res.setHeader("Cache-Control", "public, max-age=300");
+      return res.json({ results: result.rows });
+    } catch (err) {
+      console.error("GET /api/players/lookup failed:", err);
+      return sendDbError(res, err, "We couldn't look up those players right now.");
+    }
+  });
+
   // ─── Name lookup (autocomplete / "did you mean") ────────────────────────
   //
   // GET /api/players?q=prefix → up to 10 registered names starting with q,

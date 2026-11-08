@@ -70,6 +70,9 @@ separate). Guests never get a profile: their names aren't unique.
   replays. 404 when the name has no registered replays. Cached for 5 minutes.
 - `GET /api/player/:name/map/:mapid` → that player on one map: games, first
   and last day, room and mode split, and who they play it with.
+- `GET /api/players/lookup?names=a&names=b` → replay totals (games, latest
+  level) for up to 60 exact registered names; names with no replays are
+  left out. Used by Bonkverse's player search cards.
 - `GET /api/players?q=abc` → up to 10 registered names starting with `q`
   (3+ characters), most-played first.
 
