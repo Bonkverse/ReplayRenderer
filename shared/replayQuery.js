@@ -82,6 +82,36 @@ export const FIELDS = [
       ["between", "is between"],
     ],
   },
+  {
+    // DBIDs come from bonkverse.io (server/sync-routes.mjs, table player_ids):
+    // only players Bonkverse has seen in a friend list or a login have one.
+    key: "dbid",
+    group: "Players",
+    label: "A player's DBID",
+    value: "number",
+    min: 1,
+    max: 1e12,
+    ops: [
+      ["eq", "is"],
+      ["lte", "is at most"],
+      ["gte", "is at least"],
+      ["between", "is between"],
+    ],
+  },
+  {
+    key: "joined",
+    group: "Players",
+    label: "A player joined",
+    value: "number",
+    min: 2013,
+    max: 2100,
+    ops: [
+      ["eq", "in"],
+      ["lt", "before"],
+      ["gt", "after"],
+      ["between", "between"],
+    ],
+  },
   { key: "players", group: "Players", label: "Players", value: "number", min: 0, max: 99, unit: "in the game", ops: NUMBER_OPS },
   { key: "guests", group: "Players", label: "Guests", value: "number", min: 0, max: 99, unit: "in the game", ops: NUMBER_OPS },
 
@@ -137,6 +167,7 @@ export const EXAMPLES = [
   ["Big lobbies (8+)", [{ field: "players", op: "gte", value: "8" }]],
   ["Football teams", [{ field: "mode", op: "is", value: "f" }, { field: "teams", op: "yes" }]],
   ["No guests", [{ field: "guests", op: "eq", value: "0" }]],
+  ["Player who joined in 2014", [{ field: "joined", op: "eq", value: "2014" }]],
 ];
 
 // ─── Parsing ───────────────────────────────────────────────────────────────

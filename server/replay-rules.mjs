@@ -70,6 +70,25 @@ function ruleSql(rule, p, guestCond) {
       return participant(textCond("rp.username", rule, p));
     case "level":
       return participant(numberCond("rp.level", rule, p, "::int"));
+    case "dbid":
+    case "joined": {
+      // player_ids: name ↔ DBID and estimated join day, sent by bonkverse.io
+      let cond;
+      if (rule.field === "dbid") {
+        cond = numberCond("pi.dbid", rule, p, "::bigint");
+      } else {
+        const jan1 = (year) => `make_date(${p(year)}::int, 1, 1)`;
+        const next = (year) => String(Number(year) + 1);
+        if (rule.op === "eq") cond = `pi.joined >= ${jan1(rule.value)} AND pi.joined < ${jan1(next(rule.value))}`;
+        else if (rule.op === "lt") cond = `pi.joined < ${jan1(rule.value)}`;
+        else if (rule.op === "gt") cond = `pi.joined >= ${jan1(next(rule.value))}`;
+        else cond = `pi.joined >= ${jan1(rule.value)} AND pi.joined < ${jan1(next(rule.value2))}`;
+      }
+      return `EXISTS (
+        SELECT 1 FROM replay_participants rp
+        JOIN player_ids pi ON lower(pi.username) = lower(rp.username)
+        WHERE rp.cycle = r.cycle AND rp.replay_id = r.id AND NOT rp.guest AND ${cond})`;
+    }
     case "players":
       return numberCond("rm.player_count", rule, p, "::int");
     case "guests":

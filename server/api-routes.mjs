@@ -19,6 +19,7 @@ import { promisify } from "node:util";
 import { decodeStoredReplay } from "./codec.js";
 import { renderMapThumbnailSvg } from "./map-render/renderMapThumbnailSvg.mjs";
 import { registerPlayerRoutes } from "./player-routes.mjs";
+import { registerSyncRoutes, ensurePlayerIds } from "./sync-routes.mjs";
 import { rulesSql } from "./replay-rules.mjs";
 import { parseRules } from "../shared/replayQuery.js";
 
@@ -241,6 +242,9 @@ async function enrichKeys(pool, keysSql, params, order = NEWEST) {
 export function registerApiRoutes(app, pool) {
   // Player profiles (server/player-routes.mjs)
   registerPlayerRoutes(app, pool, { enrichKeys, sendDbError });
+  // Name ↔ DBID sync with bonkverse.io (server/sync-routes.mjs)
+  registerSyncRoutes(app, pool, { sendDbError });
+  ensurePlayerIds(pool).catch((err) => console.warn("player_ids table not ready yet:", err.message));
 
   // One replay's data for the watch page: the decoded replay plus the facts
   // that only live in the database (dates, map name).
