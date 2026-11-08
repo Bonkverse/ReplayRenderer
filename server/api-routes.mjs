@@ -18,6 +18,7 @@ import zlib from "node:zlib";
 import { promisify } from "node:util";
 import { decodeStoredReplay } from "./codec.js";
 import { renderMapThumbnailSvg } from "./map-render/renderMapThumbnailSvg.mjs";
+import { registerPlayerRoutes } from "./player-routes.mjs";
 
 const gunzip = promisify(zlib.gunzip);
 
@@ -231,6 +232,9 @@ async function enrichKeys(pool, keysSql, params, order = NEWEST) {
 // ─── Routes ─────────────────────────────────────────────────────────────────
 
 export function registerApiRoutes(app, pool) {
+  // Player profiles (server/player-routes.mjs)
+  registerPlayerRoutes(app, pool, { enrichKeys, sendDbError });
+
   // One replay's data for the watch page: the decoded replay plus the facts
   // that only live in the database (dates, map name).
   app.get("/api/replay/:id", async (req, res) => {

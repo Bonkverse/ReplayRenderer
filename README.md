@@ -51,3 +51,20 @@ replay-renderer/
 
 `core/` is needed in both — share it via a workspace package or just duplicate the four
 small files for now. See **SETUP.md** for the step-by-step.
+
+## Player API
+
+Profiles for any registered bonk.io player, built from the replay archive.
+Bonkverse reads these over HTTP (the replay DB and the Bonkverse DB are
+separate). Guests never get a profile: their names aren't unique.
+
+- `GET /api/player/:name` → `summary` (games, current/peak level, first and
+  last replay, active days), `days` (games and highest level per day),
+  `weekdays`, `hours` (UTC, live-collected replays only, with the sample
+  size), `modes`, top `maps`, `played_with` and `teammates` (registered
+  players only), and the six most `recent` replays. 404 when the name has no
+  registered replays. Cached for 5 minutes.
+- `GET /api/players?q=abc` → up to 10 registered names starting with `q`
+  (3+ characters), most-played first.
+
+No win rate: a stored replay is the end of one round and doesn't say who won.
