@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>About Replay Dates · Bonkverse Replays</title>
+    <meta
+      name="description"
+      content="How Bonkverse collects bonk.io replays, which dates are exact, and how estimated dates are calculated."
+    />
+    <style>
+      @font-face {
+        font-family: "fptmed";
+        src: url("/vendor/fonts/fptmed.otf") format("opentype");
+      }
+      @font-face {
+        font-family: "fptbook";
+        src: url("/vendor/fonts/fptbook.otf") format("opentype");
+      }
+
+      :root {
+        --bg: #0f172a;
+        --panel: #172033;
+        --border: #334155;
+        --text: #ffffff;
+        --muted: #94a3b8;
+        --teal: #14b8a6;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: "fptbook", "fptmed", system-ui, sans-serif;
+        line-height: 1.6;
+      }
+
+      .wrap {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 32px 16px 56px;
+      }
+
+      a {
+        color: var(--teal);
+        text-decoration: none;
+      }
+
+      a:hover {
+        text-decoration: underline;
+      }
+
+      .back {
+        font-family: "fptmed", sans-serif;
+        font-size: 14px;
+      }
+
+      h1,
+      h2 {
+        font-family: "fptmed", sans-serif;
+        font-weight: normal;
+        line-height: 1.25;
+      }
+
+      h1 {
+        font-size: 30px;
+        margin: 20px 0 8px;
+      }
+
+      h2 {
+        font-size: 21px;
+        margin: 40px 0 10px;
+      }
+
+      .lead {
+        font-size: 18px;
+        color: #e2e8f0;
+      }
+
+      .muted {
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .pill {
+        display: inline-block;
+        padding: 2px 10px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        background: var(--panel);
+        font-family: "fptmed", sans-serif;
+        white-space: nowrap;
+      }
+
+      .table-wrap {
+        overflow-x: auto;
+        margin: 12px 0;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 15px;
+      }
+
+      th,
+      td {
+        padding: 10px 12px;
+        text-align: left;
+        border-bottom: 1px solid var(--border);
+        vertical-align: top;
+      }
+
+      th {
+        font-family: "fptmed", sans-serif;
+        font-weight: normal;
+        color: var(--muted);
+        background: var(--panel);
+      }
+
+      tr:last-child td {
+        border-bottom: none;
+      }
+
+      td.num {
+        white-space: nowrap;
+      }
+
+      ul {
+        padding-left: 20px;
+      }
+
+      li {
+        margin: 6px 0;
+      }
+
+      .callout {
+        margin: 16px 0;
+        padding: 14px 16px;
+        border: 1px solid rgba(20, 184, 166, 0.4);
+        border-radius: 12px;
+        background: rgba(20, 184, 166, 0.08);
+      }
+    </style>
+  </head>
+
+  <body>
+    <main class="wrap">
+      <a class="back" href="/">← Back to replays</a>
+
+      <h1>About replay dates</h1>
+      <p class="lead">
+        Most replay dates are exact. Replays marked
+        <span class="pill">≈ week of …</span> have an estimated date, usually within a
+        few days of the real one.
+      </p>
+
+      <h2>Where dates come from</h2>
+      <p>
+        bonk.io doesn't publish when a replay was uploaded, so Bonkverse records the date
+        itself. Its replay collector fetches each new replay within minutes of the game
+        ending and saves the time it was collected. That time is the date you see.
+      </p>
+      <p>
+        Every replay gets the next ID number in its cycle, starting from 1 when a new
+        cycle begins. Because IDs go up in order, a replay's ID tells us roughly when it
+        was played, even when we didn't collect it live.
+      </p>
+
+      <h2>Exact vs. estimated</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Replays</th>
+              <th>Replay IDs</th>
+              <th>Date shown</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Cycle 6, after our collector started</td>
+              <td class="num">15,708 and up</td>
+              <td>Exact</td>
+            </tr>
+            <tr>
+              <td>Cycle 6, first four days</td>
+              <td class="num">1 – 15,707</td>
+              <td>Estimated (May 11–14, 2026)</td>
+            </tr>
+            <tr>
+              <td>Cycle 5</td>
+              <td class="num">all</td>
+              <td>Estimated</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Cycle 6 started around May 11, 2026, but our collector began on May 14 and then
+        caught up on the replays it had missed. Cycle 5 replays came from an archive we
+        imported all at once, so their saved date is just the import day.
+      </p>
+
+      <h2>How estimates are calculated</h2>
+      <p>
+        We start from the cycle's estimated start date, end date and total number of
+        replays. Then we spread those replay IDs across the cycle's days, giving busy days
+        more replays than quiet ones, and look up which day a replay's ID falls on.
+      </p>
+      <p>
+        "Busy" comes from what we measured in cycle 6: bonk.io is busiest on school-day
+        afternoons, about 35% quieter on weekends during the school year, and quieter
+        again in summer.
+      </p>
+      <div class="callout">
+        <strong>How accurate is it?</strong> We tested the method on cycle 6, where we know
+        the real dates. Estimates were 2.4 days off on average, and 90% were within 5 days.
+        Cycle 5 estimates are a bit less certain because the cycle's dates are estimates
+        too, which is why we show the week rather than the day.
+      </div>
+
+      <h2>bonk.io replay cycles</h2>
+      <p>
+        These dates were reconstructed by <strong>Salama</strong> and
+        <strong>Legendboss123</strong> from map release dates seen in replays, not official
+        logs, so treat them as approximate.
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Cycle</th>
+              <th>Approximate dates</th>
+              <th>Replays</th>
+              <th>Per day</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>1</td>
+              <td>May 24, 2021 – Nov 18, 2022</td>
+              <td class="num">~1.87M</td>
+              <td class="num">~3,444</td>
+            </tr>
+            <tr>
+              <td>2</td>
+              <td>Nov 21, 2022 – Sep 11, 2023</td>
+              <td class="num">~950K</td>
+              <td class="num">~3,231</td>
+            </tr>
+            <tr>
+              <td>3</td>
+              <td>Sep 12, 2023 – Dec 23, 2023</td>
+              <td class="num">~330K</td>
+              <td class="num">~3,235</td>
+            </tr>
+            <tr>
+              <td>4</td>
+              <td>Dec 31, 2023 – Mar 1, 2025</td>
+              <td class="num">~1.12M</td>
+              <td class="num">~2,629</td>
+            </tr>
+            <tr>
+              <td>5</td>
+              <td>Mar 3, 2025 – Apr 29, 2026</td>
+              <td class="num">~1.05M</td>
+              <td class="num">~2,488</td>
+            </tr>
+            <tr>
+              <td>6</td>
+              <td>May 11, 2026 – ongoing</td>
+              <td class="num">345K+</td>
+              <td class="num">~1,900</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="muted">Cycle 6 figures as of November 7, 2026.</p>
+
+      <h2>Known gaps</h2>
+      <ul>
+        <li>
+          Our cycle 5 archive ends around early January 2026. Replays from roughly
+          January 9 to April 29, 2026 aren't on Bonkverse.
+        </li>
+        <li>Cycles 1–4 aren't on Bonkverse yet.</li>
+        <li>
+          We miss about 15% of replays, mostly during short pauses when bonk.io limits how
+          fast we can collect. They're spread evenly, not in big holes.
+        </li>
+      </ul>
+      <p>
+        Have cycle 5 replays from after early January 2026, or a replay with a known date
+        (a tournament, a video, a Discord post)? Let us know in the Bonkverse Discord. It
+        helps fill gaps and makes the estimates more accurate.
+      </p>
+
+      <h2>Credits</h2>
+      <p>
+        Cycle dates and replay counts: <strong>Salama</strong> and
+        <strong>Legendboss123</strong>. Activity patterns and date estimates: Bonkverse's
+        replay archive.
+      </p>
+
+      <p><a class="back" href="/">← Back to replays</a></p>
+    </main>
+  </body>
+</html>

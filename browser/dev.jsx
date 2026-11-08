@@ -272,8 +272,11 @@ function PlayerAvatar({ avatar, initialsText, color, size = 46 }) {
 // modelled from replay IDs, and we show it as an approximate week. Real
 // dates (cycle 6 onward) still come from fetched_at.
 const ESTIMATED_DATE_NOTE =
-  "Estimated from the replay ID. Cycle 5 dates are reconstructed from " +
-  "cycle date estimates by Salama & Legendboss123 and cycle 6 upload patterns.";
+  "Estimated from the replay ID, using cycle date estimates by Salama & " +
+  "Legendboss123 and Bonkverse's own upload patterns. Usually within a few days.";
+
+// Static explainer page (public/about/dates.html, copied into the build as-is).
+const ABOUT_DATES_URL = "/about/dates.html";
 
 function formatReplayDate(item) {
   if (item.estimated_day) {
@@ -803,6 +806,12 @@ function App() {
             <>
               <div className="results-meta">
                 {totalResults.toLocaleString()} result{totalResults === 1 ? "" : "s"}
+                {results.some((r) => r.estimated_day) && (
+                  <>
+                    {" · Dates marked ≈ are estimated. "}
+                    <a href={ABOUT_DATES_URL}>How we date replays</a>
+                  </>
+                )}
               </div>
 
               <div className="results-grid">
@@ -858,6 +867,10 @@ function App() {
           )}
         </main>
       )}
+
+      <footer className="site-footer">
+        <a href={ABOUT_DATES_URL}>About replay dates</a>
+      </footer>
     </div>
   );
 }
