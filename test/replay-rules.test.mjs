@@ -75,6 +75,10 @@ describe("searching", { skip: !DB && "set TEST_DATABASE_URL to run" }, () => {
   before(async () => {
     pool = new pg.Pool({ connectionString: DB });
     await pool.query(`TRUNCATE replays, maps, replay_cycle_days CASCADE`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS player_ids (dbid BIGINT PRIMARY KEY, username TEXT NOT NULL, joined DATE, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+    await pool.query(`TRUNCATE player_ids`);
+    // From bonkverse.io: Alpha and _x_ have known DBIDs; Beta doesn't.
+    await pool.query(`INSERT INTO player_ids (dbid, username, joined) VALUES (500, 'alpha', '2014-06-01'), (9000000, '_x_', '2021-03-01')`);
     // id, cycle, mapid, fetched_at, meta [mode, teams, quickplay, rounds, win_limit, frames, players, guests], players [name, guest, level]
     const games = [
       [1, 6, 10, "2026-06-01", ["ard", false, false, 5, 3, 3000, 2, 0], [["Alpha", false, 120], ["Beta", false, 40]]],
@@ -153,6 +157,12 @@ describe("searching", { skip: !DB && "set TEST_DATABASE_URL to run" }, () => {
     ["date between", [rule("date", "between", "2026-06-02", "2026-06-03")], [2, 3]],
     ["date before", [rule("date", "before", "2026-01-01")], [5]],
     ["cycle", [rule("cycle", "is", "5")], [5]],
+    ["a player's DBID (names match any case)", [rule("dbid", "eq", "500")], [1, 2, 5]],
+    ["DBID range", [rule("dbid", "gte", "1000000")], [3]],
+    ["joined in a year", [rule("joined", "eq", "2014")], [1, 2, 5]],
+    ["joined after", [rule("joined", "gt", "2014")], [3]],
+    ["joined between", [rule("joined", "between", "2013", "2022")], [1, 2, 3, 5]],
+    ["joined before", [rule("joined", "lt", "2014")], []],
     // AND before OR: (Death Arrows AND 1v1) OR Football
     ["and before or", [rule("mode", "is", "ard"), rule("room", "is", "1v1"), or("mode", "is", "f")], [1, 3]],
   ];
@@ -161,6 +171,18 @@ describe("searching", { skip: !DB && "set TEST_DATABASE_URL to run" }, () => {
       assert.deepEqual(await ids(qs(rules).toString()), expected);
     });
   }
+
+  test("the DBID search tab finds a player's replays and names them", async () => {
+    assert.deepEqual(await ids("q=500&scope=dbid"), [1, 2, 5]);
+    const body = await (await fetch(`${base}/api/search?q=500&scope=dbid`)).json();
+    assert.equal(body.query.dbidPlayer, "alpha");
+    assert.deepEqual(await ids("q=abc&scope=dbid"), []); // not a number
+  });
+
+  test("\"All\" with a number also matches a DBID", async () => {
+    assert.deepEqual(await ids("q=9000000"), [3]); // _x_'s DBID
+    assert.deepEqual(await ids("q=2"), [2]); // still a replay ID
+  });
 
   test("guests can be included for name rules", async () => {
     assert.deepEqual(await ids(`guests=include&${qs([rule("player", "is", "guesty")])}`), [2]);
@@ -174,5 +196,84 @@ describe("searching", { skip: !DB && "set TEST_DATABASE_URL to run" }, () => {
     const res = await fetch(`${base}/api/search?${qs([rule("teams", "no")])}`);
     const body = await res.json();
     assert.equal(body.query.rules[0].field, "teams");
+  });
+});
+
+describe("sync with bonkverse.io", { skip: !DB && "set TEST_DATABASE_URL to run" }, () => {
+  let pool, server, base;
+  const TOKEN = "test-sync-token";
+  const auth = { Authorization: `Bearer ${TOKEN}` };
+
+  before(async () => {
+    process.env.BONKVERSE_SYNC_TOKEN = TOKEN;
+    pool = new pg.Pool({ connectionString: DB });
+    const app = express();
+    registerApiRoutes(app, pool);
+    await new Promise((resolve) => {
+      server = app.listen(0, "127.0.0.1", resolve);
+    });
+    base = `http://127.0.0.1:${server.address().port}`;
+  });
+
+  after(async () => {
+    delete process.env.BONKVERSE_SYNC_TOKEN;
+    server?.close();
+    await pool?.end();
+  });
+
+  test("needs the token", async () => {
+    assert.equal((await fetch(`${base}/api/internal/replay-names`)).status, 401);
+    const wrong = await fetch(`${base}/api/internal/replay-names`, { headers: { Authorization: "Bearer nope" } });
+    assert.equal(wrong.status, 401);
+  });
+
+  test("is hidden when no token is configured", async () => {
+    delete process.env.BONKVERSE_SYNC_TOKEN;
+    try {
+      assert.equal((await fetch(`${base}/api/internal/replay-names`, { headers: auth })).status, 404);
+    } finally {
+      process.env.BONKVERSE_SYNC_TOKEN = TOKEN;
+    }
+  });
+
+  test("saves name and DBID pairs, updating changed ones", async () => {
+    const post = (players) =>
+      fetch(`${base}/api/internal/player-ids`, {
+        method: "POST",
+        headers: { ...auth, "Content-Type": "application/json" },
+        body: JSON.stringify({ players }),
+      }).then((r) => r.json());
+    const first = await post([
+      { username: "Beta", dbid: 777, joined: "2016-02-02" },
+      { username: "bad", dbid: -4 },
+      { username: "", dbid: 9 },
+    ]);
+    assert.deepEqual([first.received, first.written, first.skipped], [1, 1, 2]);
+    const again = await post([{ username: "Beta", dbid: 777, joined: "2016-02-02" }]);
+    assert.equal(again.written, 0); // unchanged rows aren't rewritten
+    const changed = await post([{ username: "Beta", dbid: 777, joined: "2016-03-03" }]);
+    assert.equal(changed.written, 1);
+    const { rows } = await pool.query(`SELECT username, to_char(joined, 'YYYY-MM-DD') AS joined FROM player_ids WHERE dbid = 777`);
+    assert.deepEqual(rows[0], { username: "Beta", joined: "2016-03-03" });
+  });
+
+  test("reads registered replay names in batches after a cursor", async () => {
+    const get = (q) => fetch(`${base}/api/internal/replay-names?${q}`, { headers: auth }).then((r) => r.json());
+    const page1 = await get("limit=2");
+    assert.equal(page1.done, false);
+    assert.equal(page1.next, "6:1"); // cycle 5's replay first, then cycle 6's
+    assert.deepEqual(page1.names.map((n) => [n.username, n.games]), [["Alpha", 2], ["Beta", 1]]);
+    const all = [];
+    let cursor = "";
+    for (let i = 0; i < 10; i++) {
+      const page = await get(`limit=2${cursor ? `&after=${cursor}` : ""}`);
+      all.push(...page.names);
+      cursor = page.next;
+      if (page.done) break;
+    }
+    const names = [...new Set(all.map((n) => n.username))].sort();
+    assert.deepEqual(names, ["Alpha", "Beta", "Delta", "Gamma", "_x_", "solo man"]); // no guests
+    const alphaLevels = all.filter((n) => n.username === "Alpha").map((n) => n.level);
+    assert.ok(alphaLevels.includes(121));
   });
 });

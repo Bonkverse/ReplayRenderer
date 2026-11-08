@@ -291,8 +291,13 @@ export default function Search({ route }) {
   const hasCriteria = search.q || filterCount > 0 || search.rules.length > 0;
   const rulesKey = new URLSearchParams(rulesToParams(search.rules)).toString();
 
+  const dbidPlayer = data?.query?.dbidPlayer ?? null;
   const heading =
-    search.scope === "username" && search.q
+    search.scope === "dbid" && search.q
+      ? dbidPlayer
+        ? `Replays with ${dbidPlayer} (DBID ${search.q})`
+        : `Replays with DBID ${search.q}`
+      : search.scope === "username" && search.q
       ? `Replays with ${search.q}`
       : search.q
         ? `Results for “${search.q}”`
@@ -441,6 +446,12 @@ export default function Search({ route }) {
           ) : results.length === 0 ? (
             <div className="notice">
               <p>No replays match this search.</p>
+              {search.scope === "dbid" && !dbidPlayer && (
+                <p className="muted">
+                  Bonkverse doesn&rsquo;t know whose DBID that is yet. DBIDs come from bonk.io friend lists and logins on
+                  bonkverse.io.
+                </p>
+              )}
               {search.scope === "username" && search.guests === "exclude" && (
                 <p className="muted">
                   Only registered accounts are matched by name.{" "}
@@ -464,7 +475,7 @@ export default function Search({ route }) {
             <>
               <ul className="rows">
                 {results.map((item) => (
-                  <ReplayRow key={`${item.cycle}:${item.id}`} item={item} search={search} />
+                  <ReplayRow key={`${item.cycle}:${item.id}`} item={item} search={{ ...search, dbidPlayer }} />
                 ))}
               </ul>
               <Pagination

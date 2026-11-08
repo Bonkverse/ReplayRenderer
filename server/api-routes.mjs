@@ -19,6 +19,7 @@ import { promisify } from "node:util";
 import { decodeStoredReplay } from "./codec.js";
 import { renderMapThumbnailSvg } from "./map-render/renderMapThumbnailSvg.mjs";
 import { registerPlayerRoutes } from "./player-routes.mjs";
+import { registerSyncRoutes, ensurePlayerIds } from "./sync-routes.mjs";
 import { rulesSql } from "./replay-rules.mjs";
 import { parseRules } from "../shared/replayQuery.js";
 
@@ -89,7 +90,7 @@ const toArray = (v) => (v == null ? [] : Array.isArray(v) ? v : [v]);
  */
 function buildSearch(query) {
   const q = String(query.q ?? "");
-  const scope = ["all", "username", "id", "mapid", "mapname"].includes(query.scope)
+  const scope = ["all", "username", "id", "mapid", "mapname", "dbid"].includes(query.scope)
     ? query.scope
     : "all";
   const guests = ["exclude", "include", "only"].includes(query.guests) ? query.guests : "exclude";
@@ -126,6 +127,13 @@ function buildSearch(query) {
         AND lower(rp.username) = lower(${p(name)})
         ${guestCond}
     )`;
+  // A registered player whose bonk.io account ID is `n` (player_ids comes
+  // from bonkverse.io, server/sync-routes.mjs).
+  const playerDbid = (n) => `EXISTS (
+      SELECT 1 FROM player_ids pi
+      JOIN replay_participants rp ON lower(rp.username) = lower(pi.username)
+      WHERE pi.dbid = ${n}::bigint AND rp.cycle = r.cycle AND rp.replay_id = r.id AND NOT rp.guest
+    )`;
   const mapNameContains = (text) => `EXISTS (
       SELECT 1 FROM maps mn
       WHERE mn.mapid = r.mapid
@@ -150,11 +158,15 @@ function buildSearch(query) {
       case "mapname":
         where.push(mapNameContains(q));
         break;
+      case "dbid":
+        if (!isDigits(qt)) return null;
+        where.push(playerDbid(p(qt)));
+        break;
       default: {
         const ors = [playerContains(q), mapNameContains(q)];
         if (isDigits(qt)) {
           const n = p(qt);
-          ors.unshift(`r.id = ${n}::bigint`, `r.mapid = ${n}::bigint`);
+          ors.unshift(`r.id = ${n}::bigint`, `r.mapid = ${n}::bigint`, playerDbid(n));
         }
         where.push(`(${ors.join(" OR ")})`);
       }
@@ -241,6 +253,9 @@ async function enrichKeys(pool, keysSql, params, order = NEWEST) {
 export function registerApiRoutes(app, pool) {
   // Player profiles (server/player-routes.mjs)
   registerPlayerRoutes(app, pool, { enrichKeys, sendDbError });
+  // Name ↔ DBID sync with bonkverse.io (server/sync-routes.mjs)
+  registerSyncRoutes(app, pool, { sendDbError });
+  ensurePlayerIds(pool).catch((err) => console.warn("player_ids table not ready yet:", err.message));
 
   // One replay's data for the watch page: the decoded replay plus the facts
   // that only live in the database (dates, map name).
@@ -327,7 +342,8 @@ export function registerApiRoutes(app, pool) {
   //
   // Query string:
   //   q        text to search for
-  //   scope    all | username | id | mapid | mapname
+  //   scope    all | username | id | mapid | mapname | dbid (a player's
+  //            bonk.io account ID; "all" with a number matches it too)
   //   guests   exclude (default) | include | only — applies to name matches
   //   with     an added player (repeat for several); exact name, same replay
   //   match    all (default: every added player) | any (at least one)
@@ -387,7 +403,23 @@ export function registerApiRoutes(app, pool) {
         built.order
       );
 
-      return res.json({ results: rows, page, pageSize: PAGE_SIZE, total, totalPages, capped, query: built.echo });
+      // Whose DBID this is, so the page can say so and highlight them.
+      let dbidPlayer = null;
+      const qt = built.echo.q.trim();
+      if ((built.echo.scope === "dbid" || built.echo.scope === "all") && isDigits(qt)) {
+        const named = await pool.query(`SELECT username FROM player_ids WHERE dbid = $1::bigint`, [qt]);
+        dbidPlayer = named.rows[0]?.username ?? null;
+      }
+
+      return res.json({
+        results: rows,
+        page,
+        pageSize: PAGE_SIZE,
+        total,
+        totalPages,
+        capped,
+        query: { ...built.echo, dbidPlayer },
+      });
     } catch (err) {
       console.error("GET /api/search failed:", err);
       return sendDbError(res, err, "Something went wrong running that search. Please try again.");
