@@ -29,15 +29,85 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
   const [exporting, setExporting] = useState(false); // legacy webm fallback path
   const [exportPct, setExportPct] = useState(null); // null = not exporting (mp4 path)
   const [gifExportPct, setGifExportPct] = useState(null); // null = not exporting (gif path)
-  const [isFs, setIsFs] = useState(false);
+  const [nativeFs, setNativeFs] = useState(false);
+  // iPhone Safari has no element fullscreen API (only <video> can go
+  // fullscreen), so there we fake it: the player shell is pinned over the
+  // whole viewport with CSS (.is-pseudo-fs). Everything downstream treats
+  // both kinds the same through `isFs`.
+  const [pseudoFs, setPseudoFs] = useState(false);
+  const isFs = nativeFs || pseudoFs;
   const [controlsVisible, setControlsVisible] = useState(true);
+
+  // On-screen player size when not fullscreen: the native width x height,
+  // shrunk to fit narrower containers (phones) with the same aspect ratio.
+  // Bonk renders natively at whatever size we feed it, so this stays sharp.
+  const [box, setBox] = useState({ w: width, h: height });
+  const [viewport, setViewport] = useState(() => ({
+    w: typeof window !== "undefined" ? window.innerWidth : width,
+    h: typeof window !== "undefined" ? window.innerHeight : height,
+  }));
 
   // ── Track fullscreen state ────────────────────────────────────────────────
   useEffect(() => {
-    const onFsChange = () => setIsFs(!!document.fullscreenElement);
+    const onFsChange = () => setNativeFs(!!document.fullscreenElement);
     document.addEventListener("fullscreenchange", onFsChange);
     return () => document.removeEventListener("fullscreenchange", onFsChange);
   }, []);
+
+  // ── Fit the player to its container's width ───────────────────────────────
+  useEffect(() => {
+    const parent = playerRootRef.current?.parentElement;
+    if (!parent) return;
+
+    const fit = () => {
+      const avail = Math.floor(parent.clientWidth);
+      if (!avail) return;
+      const w = Math.min(width, avail);
+      const h = Math.round((w * height) / width);
+      setBox((prev) => (prev.w === w && prev.h === h ? prev : { w, h }));
+    };
+
+    fit();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", fit);
+      return () => window.removeEventListener("resize", fit);
+    }
+    const ro = new ResizeObserver(fit);
+    ro.observe(parent);
+    return () => ro.disconnect();
+  }, [width, height]);
+
+  // ── Follow the viewport while fullscreen (phone rotation, URL bar) ────────
+  useEffect(() => {
+    if (!isFs) return;
+    const onResize = () =>
+      setViewport({ w: window.innerWidth, h: window.innerHeight });
+    onResize();
+    window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
+    };
+  }, [isFs]);
+
+  // ── Pseudo-fullscreen: pin the shell over the page, lock page scroll ──────
+  useEffect(() => {
+    if (!pseudoFs) return;
+    const target =
+      document.getElementById(fullscreenTargetId) || playerRootRef.current;
+    target?.classList.add("is-pseudo-fs");
+    document.body.classList.add("no-scroll");
+    const onKey = (ev) => {
+      if (ev.key === "Escape") setPseudoFs(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      target?.classList.remove("is-pseudo-fs");
+      document.body.classList.remove("no-scroll");
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [pseudoFs, fullscreenTargetId]);
 
   // ── Feed bonk the real on-screen size so it renders natively (no CSS upscale).
   //    Bonk's resizeRenderer() reads domContainer.offsetWidth/offsetHeight, fits a
@@ -48,17 +118,17 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
     if (!ready || !e?.sizeRef) return;
 
     if (isFs) {
-      e.sizeRef.w = window.innerWidth;
-      e.sizeRef.h = window.innerHeight;
+      e.sizeRef.w = viewport.w;
+      e.sizeRef.h = viewport.h;
     } else {
-      e.sizeRef.w = width;
-      e.sizeRef.h = height;
+      e.sizeRef.w = box.w;
+      e.sizeRef.h = box.h;
     }
 
     // Repaint the current frame so bonk re-reads offsetWidth and resizes even
     // when the replay is paused (the render() path detects the size change).
     renderAt(Math.floor(e.playhead || 0));
-  }, [isFs, ready, width, height]);
+  }, [isFs, ready, box, viewport]);
 
   // ── YouTube-style show-on-hover, hide-on-leave controls ───────────────────
   // Applies in both windowed and fullscreen mode: controls appear on mouse
@@ -88,12 +158,18 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
     show();
     root?.addEventListener("mousemove", show);
     root?.addEventListener("mouseleave", hideNow);
+    // Touch screens never send mousemove while idle, so any touch on the
+    // player brings the controls back too.
+    root?.addEventListener("touchstart", show, { passive: true });
     fsShell?.addEventListener("mousemove", show);
+    fsShell?.addEventListener("touchstart", show, { passive: true });
 
     return () => {
       root?.removeEventListener("mousemove", show);
       root?.removeEventListener("mouseleave", hideNow);
+      root?.removeEventListener("touchstart", show);
       fsShell?.removeEventListener("mousemove", show);
+      fsShell?.removeEventListener("touchstart", show);
       clearTimeout(hideTimer.current);
     };
   }, [isFs, fullscreenTargetId]);
@@ -782,10 +858,24 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
   function toggleFullscreen() {
     if (document.fullscreenElement) {
       document.exitFullscreen?.();
+      return;
+    }
+    if (pseudoFs) {
+      setPseudoFs(false);
+      return;
+    }
+
+    const target =
+      document.getElementById(fullscreenTargetId) || containerRef.current;
+    if (target?.requestFullscreen && document.fullscreenEnabled !== false) {
+      try {
+        Promise.resolve(target.requestFullscreen()).catch(() => setPseudoFs(true));
+      } catch {
+        setPseudoFs(true);
+      }
     } else {
-      const target =
-        document.getElementById(fullscreenTargetId) || containerRef.current;
-      target?.requestFullscreen?.();
+      // No element fullscreen (iPhone Safari): fall back to the CSS version.
+      setPseudoFs(true);
     }
   }
 
@@ -856,8 +946,8 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
       className="replay-player"
       ref={playerRootRef}
       style={{
-        width: isFs ? "100vw" : `${width}px`,
-        minWidth: isFs ? 0 : `${width}px`,
+        width: isFs ? `${viewport.w}px` : `${box.w}px`,
+        maxWidth: "100%",
         position: "relative", // anchor for the export progress overlay
       }}
     >
@@ -867,16 +957,8 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
         onClick={togglePlayPause}
         title={playing ? "Pause" : "Play"}
         style={{
-          width: isFs ? "100vw" : `${width}px`,
-          height: isFs ? "100vh" : `${height}px`,
-          ...(isFs
-            ? {}
-            : {
-                minWidth: `${width}px`,
-                minHeight: `${height}px`,
-                maxWidth: `${width}px`,
-                maxHeight: `${height}px`,
-              }),
+          width: isFs ? `${viewport.w}px` : `${box.w}px`,
+          height: isFs ? `${viewport.h}px` : `${box.h}px`,
           background: isFs ? "#0f172a" : "#102033",
           borderRadius: isFs ? 0 : 8,
           overflow: "hidden",
@@ -949,11 +1031,12 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
 
         <button
           className="icon-btn"
-          title="Fullscreen"
+          title={isFs ? "Exit fullscreen" : "Fullscreen"}
+          aria-label={isFs ? "Exit fullscreen" : "Fullscreen"}
           onClick={toggleFullscreen}
           disabled={!ready}
         >
-          ⛶
+          {isFs ? "✕" : "⛶"}
         </button>
       </div>
 
