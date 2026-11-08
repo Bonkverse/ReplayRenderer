@@ -73,6 +73,9 @@ export function SearchBox({
   filterCount = 0,
   onOpenFilters,
   filtersButtonRef,
+  ruleCount = 0,
+  advancedOpen = false,
+  onToggleAdvanced,
   autoFocus = false,
   large = false,
 }) {
@@ -142,6 +145,17 @@ export function SearchBox({
           </select>
         </label>
 
+        {onToggleAdvanced && (
+          <button
+            type="button"
+            className={`chip chip--advanced${ruleCount || advancedOpen ? " is-active" : ""}`}
+            onClick={onToggleAdvanced}
+            aria-expanded={advancedOpen}
+            aria-controls="advanced-search"
+          >
+            Advanced search{ruleCount ? ` · ${ruleCount}` : ""}
+          </button>
+        )}
         {onOpenFilters && (
           <button
             type="button"

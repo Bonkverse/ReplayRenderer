@@ -2,11 +2,13 @@
 // have real, shareable, reloadable URLs and the browser Back button works:
 //
 //   /                          home (search + recent replays)
-//   /search?q=…&scope=…&page=… search results (every filter in the query string)
+//   /search?q=…&scope=…&page=… search results (every filter in the query string,
+//                              advanced rules as f0 o0 v0 …, see shared/replayQuery.js)
 //   /watch/:cycle/:id?t=4      one replay (t = start time in seconds)
 //
 // The production server already sends index.html for any non-API path.
 import { useEffect, useState } from "react";
+import { parseRules, rulesToParams } from "../../shared/replayQuery.js";
 
 function parse(loc = window.location) {
   const params = new URLSearchParams(loc.search);
@@ -60,6 +62,7 @@ export const SEARCH_DEFAULTS = {
   mode: "",
   map: "",
   cycle: "",
+  rules: [], // advanced-search rules (shared/replayQuery.js)
   sort: "newest",
   page: 1,
 };
@@ -74,6 +77,7 @@ export function searchFromParams(params) {
     mode: params.get("mode") ?? "",
     map: params.get("map") ?? "",
     cycle: params.get("cycle") ?? "",
+    rules: parseRules(params),
     sort: params.get("sort") ?? SEARCH_DEFAULTS.sort,
     page: Math.max(1, parseInt(params.get("page") ?? "1", 10) || 1),
   };
@@ -90,6 +94,7 @@ export function searchToQuery(s) {
   if (s.mode) p.set("mode", s.mode);
   if (s.map) p.set("map", s.map);
   if (s.cycle) p.set("cycle", s.cycle);
+  for (const [k, v] of Object.entries(rulesToParams(s.rules ?? []))) p.set(k, v);
   if (s.sort && s.sort !== SEARCH_DEFAULTS.sort) p.set("sort", s.sort);
   if (s.page > 1) p.set("page", String(s.page));
   return p.toString();

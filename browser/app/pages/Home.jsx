@@ -66,6 +66,7 @@ export default function Home() {
           large
           autoFocus
           onSubmit={(q, scope) => q.length > 0 && navigate(searchUrl({ ...SEARCH_DEFAULTS, q, scope }))}
+          onToggleAdvanced={() => navigate("/search?advanced=1")}
         />
       </section>
 

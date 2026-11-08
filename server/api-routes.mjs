@@ -19,6 +19,8 @@ import { promisify } from "node:util";
 import { decodeStoredReplay } from "./codec.js";
 import { renderMapThumbnailSvg } from "./map-render/renderMapThumbnailSvg.mjs";
 import { registerPlayerRoutes } from "./player-routes.mjs";
+import { rulesSql } from "./replay-rules.mjs";
+import { parseRules } from "../shared/replayQuery.js";
 
 const gunzip = promisify(zlib.gunzip);
 
@@ -100,6 +102,7 @@ function buildSearch(query) {
   const mode = MODES.has(String(query.mode ?? "")) ? String(query.mode) : null;
   const mapFilter = String(query.map ?? "").trim();
   const cycle = isDigits(String(query.cycle ?? "")) ? Number(query.cycle) : null;
+  const rules = parseRules(query);
 
   const params = [];
   const p = (v) => {
@@ -169,11 +172,15 @@ function buildSearch(query) {
   }
   if (cycle != null) where.push(`r.cycle = ${p(cycle)}`);
 
+  // ── Advanced-search rules (shared/replayQuery.js, server/replay-rules.mjs) ──
+  const ruleCond = rulesSql(rules, p, guestCond);
+  if (ruleCond) where.push(ruleCond);
+
   return {
     where: where.length ? where.join("\n AND ") : "TRUE",
     params,
     order: sort === "oldest" ? OLDEST : NEWEST,
-    echo: { q, scope, guests, match, sort, with: added, mode, map: mapFilter, cycle },
+    echo: { q, scope, guests, match, sort, with: added, mode, map: mapFilter, cycle, rules },
   };
 }
 
@@ -325,6 +332,7 @@ export function registerApiRoutes(app, pool) {
   //   with     an added player (repeat for several); exact name, same replay
   //   match    all (default: every added player) | any (at least one)
   //   mode     bonk.io mode code (b, ar, ard, sp, v, f, bs)
+  //   f0 o0 v0 w0 k0, c1 f1 …  advanced-search rules (shared/replayQuery.js)
   //   map      map name contains, or a map ID
   //   cycle    cycle number
   //   sort     newest (default) | oldest
@@ -348,7 +356,8 @@ export function registerApiRoutes(app, pool) {
       built.echo.with.length > 0 ||
       built.echo.mode ||
       built.echo.map ||
-      built.echo.cycle != null;
+      built.echo.cycle != null ||
+      built.echo.rules.length > 0;
     if (!hasCriteria) return res.json({ ...empty, query: built.echo });
 
     try {
