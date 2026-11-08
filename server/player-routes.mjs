@@ -227,7 +227,60 @@ export function validPlayerName(raw) {
   return name.length > 0 && name.length <= MAX_NAME_LENGTH ? name : null;
 }
 
+// Every registered player's highest level seen in replays, counted per
+// level. It reads the whole participants table, so it's computed at most
+// every few hours and shared by every request in between.
+const DISTRIBUTION_TTL_MS = 6 * 60 * 60 * 1000;
+const MAX_SANE_LEVEL = 5000; // ignore corrupt values (e.g. clamped 1e308)
+let distribution = null; // { at, data }
+let distributionPending = null;
+
+async function levelDistribution(pool) {
+  if (distribution && Date.now() - distribution.at < DISTRIBUTION_TTL_MS) return distribution.data;
+  if (!distributionPending) {
+    distributionPending = pool
+      .query(
+        `SELECT lvl AS level, count(*)::int AS players
+         FROM (SELECT max(level) AS lvl
+               FROM replay_participants
+               WHERE NOT guest AND level > 0 AND level <= ${MAX_SANE_LEVEL}
+               GROUP BY lower(username)) t
+         GROUP BY lvl ORDER BY lvl`
+      )
+      .then((result) => {
+        const levels = result.rows.map((r) => [r.level, r.players]);
+        const data = {
+          levels,
+          players: levels.reduce((sum, [, n]) => sum + n, 0),
+          generated_at: new Date().toISOString(),
+        };
+        distribution = { at: Date.now(), data };
+        return data;
+      })
+      .finally(() => {
+        distributionPending = null;
+      });
+  }
+  return distributionPending;
+}
+
 export function registerPlayerRoutes(app, pool, { enrichKeys, sendDbError }) {
+  // ─── Level distribution ─────────────────────────────────────────────────
+  //
+  // GET /api/levels/distribution → {levels: [[level, players], ...],
+  // players, generated_at}: how many registered players have each level
+  // as their highest seen in replays. For "higher than N% of players".
+  app.get("/api/levels/distribution", async (req, res) => {
+    try {
+      const data = await levelDistribution(pool);
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      return res.json(data);
+    } catch (err) {
+      console.error("GET /api/levels/distribution failed:", err);
+      return sendDbError(res, err, "We couldn't work out the level spread right now.");
+    }
+  });
+
   // ─── Full profile ───────────────────────────────────────────────────────
   //
   // GET /api/player/:name → summary, per-day games and level, weekday and
