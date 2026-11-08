@@ -1,12 +1,19 @@
 // server/api-routes.mjs
 //
-// The actual API logic (search, thumbnails, replay fetch), factored out of
-// dev-api.mjs so it has exactly one implementation shared by both:
+// The actual API logic (search, recent, related, thumbnails, replay fetch),
+// factored out of dev-api.mjs so it has exactly one implementation shared by
+// both:
 //   - server/dev-api.mjs — local dev, its own port, permissive localhost CORS
 //   - server/prod-server.mjs — production, same origin as the built
 //     frontend, no CORS needed
 // Keeping this in one place means a fix or change here applies to both
 // automatically, rather than needing to be copy-pasted and kept in sync.
+//
+// Players come from replay_participants (one row per slot, with bonk.io's
+// guest flag; written by ReplayFetcher). Registered usernames are unique and
+// permanent, guest names are not, so name matching defaults to registered
+// players only. Replays the participants backfill hasn't reached yet fall
+// back to the older replay_players names (guest status unknown).
 import zlib from "node:zlib";
 import { promisify } from "node:util";
 import { decodeStoredReplay } from "./codec.js";
@@ -14,7 +21,10 @@ import { renderMapThumbnailSvg } from "./map-render/renderMapThumbnailSvg.mjs";
 
 const gunzip = promisify(zlib.gunzip);
 
-const PAGE_SIZE = 25;
+const PAGE_SIZE = 20;
+const COUNT_CAP = 10000; // counts stop here; the UI shows "10,000+"
+const MAX_ADDED_PLAYERS = 5;
+const MODES = new Set(["b", "ar", "ard", "sp", "v", "f", "bs"]);
 
 // Maps DB/driver errors to a safe, plain-language message for the client.
 // Never forward err.message directly — it can contain SQLSTATE text,
@@ -55,26 +65,200 @@ function sendDbError(res, err, fallbackMessage) {
   return res.status(status).json({ error: message });
 }
 
+// ─── Query building ─────────────────────────────────────────────────────────
+
+// Escapes LIKE metacharacters so "%" and "_" in a username match literally.
+// Backslash first so the escapes we add aren't escaped again. Paired with
+// `ESCAPE '\'` on every LIKE below.
+const likeSafe = (s) => s.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+
+const isDigits = (s) => /^\d{1,18}$/.test(s);
+
+const toArray = (v) => (v == null ? [] : Array.isArray(v) ? v : [v]);
+
+/**
+ * Builds the WHERE clause for a search from the request's query string.
+ * Returns null when the search can't match anything (e.g. a non-numeric
+ * replay ID), so the route can answer without touching the database.
+ *
+ * Usernames are not trimmed: bonk.io names can have meaningful leading or
+ * trailing spaces. Only the numeric fields are.
+ */
+function buildSearch(query) {
+  const q = String(query.q ?? "");
+  const scope = ["all", "username", "id", "mapid", "mapname"].includes(query.scope)
+    ? query.scope
+    : "all";
+  const guests = ["exclude", "include", "only"].includes(query.guests) ? query.guests : "exclude";
+  const match = query.match === "any" ? "any" : "all";
+  const sort = query.sort === "oldest" ? "oldest" : "newest";
+  const added = toArray(query.with)
+    .map(String)
+    .filter((s) => s.length > 0)
+    .slice(0, MAX_ADDED_PLAYERS);
+  const mode = MODES.has(String(query.mode ?? "")) ? String(query.mode) : null;
+  const mapFilter = String(query.map ?? "").trim();
+  const cycle = isDigits(String(query.cycle ?? "")) ? Number(query.cycle) : null;
+
+  const params = [];
+  const p = (v) => {
+    params.push(v);
+    return `$${params.length}`;
+  };
+  const where = [];
+
+  const guestCond =
+    guests === "exclude" ? "AND NOT rp.guest" : guests === "only" ? "AND rp.guest" : "";
+
+  const playerContains = (text) => `EXISTS (
+      SELECT 1 FROM replay_participants rp
+      WHERE rp.cycle = r.cycle AND rp.replay_id = r.id
+        AND lower(rp.username) LIKE '%' || lower(${p(likeSafe(text))}) || '%' ESCAPE '\\'
+        ${guestCond}
+    )`;
+  const playerExact = (name) => `EXISTS (
+      SELECT 1 FROM replay_participants rp
+      WHERE rp.cycle = r.cycle AND rp.replay_id = r.id
+        AND lower(rp.username) = lower(${p(name)})
+        ${guestCond}
+    )`;
+  const mapNameContains = (text) => `EXISTS (
+      SELECT 1 FROM maps mn
+      WHERE mn.mapid = r.mapid
+        AND mn.name ILIKE '%' || ${p(likeSafe(text))} || '%' ESCAPE '\\'
+    )`;
+
+  // ── Main query ──
+  if (q.length > 0) {
+    const qt = q.trim();
+    switch (scope) {
+      case "username":
+        where.push(playerContains(q));
+        break;
+      case "id":
+        if (!isDigits(qt)) return null;
+        where.push(`r.id = ${p(qt)}::bigint`);
+        break;
+      case "mapid":
+        if (!isDigits(qt)) return null;
+        where.push(`r.mapid = ${p(qt)}::bigint`);
+        break;
+      case "mapname":
+        where.push(mapNameContains(q));
+        break;
+      default: {
+        const ors = [playerContains(q), mapNameContains(q)];
+        if (isDigits(qt)) {
+          const n = p(qt);
+          ors.unshift(`r.id = ${n}::bigint`, `r.mapid = ${n}::bigint`);
+        }
+        where.push(`(${ors.join(" OR ")})`);
+      }
+    }
+  }
+
+  // ── Filters ──
+  if (added.length > 0) {
+    const conds = added.map(playerExact);
+    where.push(`(${conds.join(match === "any" ? " OR " : " AND ")})`);
+  }
+  if (mode) where.push(`rm.mode = ${p(mode)}`);
+  if (mapFilter) {
+    where.push(isDigits(mapFilter) ? `r.mapid = ${p(mapFilter)}::bigint` : mapNameContains(mapFilter));
+  }
+  if (cycle != null) where.push(`r.cycle = ${p(cycle)}`);
+
+  return {
+    where: where.length ? where.join("\n AND ") : "TRUE",
+    params,
+    order: sort === "oldest" ? OLDEST : NEWEST,
+    echo: { q, scope, guests, match, sort, with: added, mode, map: mapFilter, cycle },
+  };
+}
+
+// Replay key → everything a result row or card shows: map name, match
+// metadata, estimated date and the player lineup. Expects a CTE named
+// `keys(cycle, id, mapid, fetched_at)` holding just one page of keys.
+const ENRICH_SQL = `
+  SELECT
+    k.id::text AS id,
+    k.cycle,
+    k.mapid::text AS mapid,
+    m.name AS mapname,
+    k.fetched_at,
+    to_char(rcd.day, 'YYYY-MM-DD') AS estimated_day,
+    rm.mode,
+    rm.teams,
+    rm.frames,
+    rm.player_count,
+    COALESCE(parts.list, legacy.list, '[]'::json) AS players
+  FROM keys k
+  LEFT JOIN LATERAL (
+    SELECT name FROM maps m2 WHERE m2.mapid = k.mapid ORDER BY m2.version DESC LIMIT 1
+  ) m ON true
+  LEFT JOIN replay_cycle_days rcd
+    ON rcd.cycle = k.cycle AND k.id BETWEEN rcd.first_id AND rcd.last_id
+  LEFT JOIN replay_meta rm
+    ON rm.cycle = k.cycle AND rm.replay_id = k.id
+  LEFT JOIN LATERAL (
+    SELECT json_agg(json_build_object(
+             'slot', rp.slot, 'username', rp.username, 'guest', rp.guest,
+             'team', rp.team, 'score', rp.score, 'level', rp.level
+           ) ORDER BY rp.slot) AS list
+    FROM replay_participants rp
+    WHERE rp.cycle = k.cycle AND rp.replay_id = k.id
+  ) parts ON true
+  LEFT JOIN LATERAL (
+    -- Not backfilled yet: older username-only index, guest status unknown
+    SELECT json_agg(json_build_object('username', rpl.username, 'guest', null)
+             ORDER BY rpl.username) AS list
+    FROM replay_players rpl
+    WHERE parts.list IS NULL AND rpl.cycle = k.cycle AND rpl.replay_id = k.id
+  ) legacy ON true
+`;
+
+const NEWEST = "cycle DESC, id DESC";
+const OLDEST = "cycle ASC, id ASC";
+
+async function enrichKeys(pool, keysSql, params, order = NEWEST) {
+  const result = await pool.query(
+    `WITH keys AS (${keysSql}) ${ENRICH_SQL} ORDER BY ${order.replace(/(cycle|id)/g, "k.$1")}`,
+    params
+  );
+  return result.rows;
+}
+
+// ─── Routes ─────────────────────────────────────────────────────────────────
+
 export function registerApiRoutes(app, pool) {
+  // One replay's data for the watch page: the decoded replay plus the facts
+  // that only live in the database (dates, map name).
   app.get("/api/replay/:id", async (req, res) => {
     const { id } = req.params;
     const cycle = req.query.cycle ? Number(req.query.cycle) : null;
 
+    if (!isDigits(String(id)) || (cycle != null && !Number.isInteger(cycle))) {
+      return res.status(400).json({ error: "That doesn't look like a valid replay." });
+    }
+
     try {
       const result = await pool.query(
         `
-        SELECT cycle, id, replaydata
-        FROM replays
-        WHERE id = $1::bigint
-          AND ($2::int IS NULL OR cycle = $2::int)
-        ORDER BY fetched_at DESC
+        SELECT r.cycle, r.id, r.mapid, r.replaydata, r.fetched_at,
+               to_char(rcd.day, 'YYYY-MM-DD') AS estimated_day
+        FROM replays r
+        LEFT JOIN replay_cycle_days rcd
+          ON rcd.cycle = r.cycle AND r.id BETWEEN rcd.first_id AND rcd.last_id
+        WHERE r.id = $1::bigint
+          AND ($2::int IS NULL OR r.cycle = $2::int)
+        ORDER BY r.cycle DESC
         LIMIT 1
         `,
         [id, cycle]
       );
 
       if (!result.rows.length) {
-        return res.status(404).json({ error: `Replay not found: ${id}` });
+        return res.status(404).json({ error: `Replay ${id} wasn't found.` });
       }
 
       const row = result.rows[0];
@@ -82,7 +266,10 @@ export function registerApiRoutes(app, pool) {
 
       return res.json({
         cycle: row.cycle,
-        id: row.id,
+        id: String(row.id),
+        mapid: row.mapid != null ? String(row.mapid) : null,
+        fetched_at: row.fetched_at,
+        estimated_day: row.estimated_day,
         decoded,
       });
     } catch (err) {
@@ -99,6 +286,7 @@ export function registerApiRoutes(app, pool) {
   // per mapid (latest version), not per replay, and cached for an hour.
   app.get("/api/map/:mapid/thumbnail.svg", async (req, res) => {
     const mapid = req.params.mapid;
+    if (!isDigits(String(mapid))) return res.status(400).send("Bad map id");
 
     try {
       const result = await pool.query(
@@ -124,148 +312,119 @@ export function registerApiRoutes(app, pool) {
     }
   });
 
+  // ─── Search ─────────────────────────────────────────────────────────────
+  //
+  // Query string:
+  //   q        text to search for
+  //   scope    all | username | id | mapid | mapname
+  //   guests   exclude (default) | include | only — applies to name matches
+  //   with     an added player (repeat for several); exact name, same replay
+  //   match    all (default: every added player) | any (at least one)
+  //   mode     bonk.io mode code (b, ar, ard, sp, v, f, bs)
+  //   map      map name contains, or a map ID
+  //   cycle    cycle number
+  //   sort     newest (default) | oldest
+  //   page     1-based
+  //
+  // Finds the page of matching replay keys first (index-friendly), then
+  // enriches just those rows. The count stops at COUNT_CAP so a very broad
+  // search can't scan the whole archive just to number its pages.
   app.get("/api/search", async (req, res) => {
-    const q = String(req.query.q || "").trim();
-    const field = String(req.query.field || "all"); // 'all' | 'username' | 'id' | 'mapid' | 'mapname'
-
     const pageParam = parseInt(req.query.page, 10);
-    const page = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 1;
+    const page = Number.isFinite(pageParam) && pageParam > 0 ? Math.min(pageParam, 500) : 1;
     const offset = (page - 1) * PAGE_SIZE;
 
-    if (!q) {
-      return res.json({ results: [], page: 1, pageSize: PAGE_SIZE, total: 0, totalPages: 0 });
-    }
+    const built = buildSearch(req.query);
+    const empty = { results: [], page: 1, pageSize: PAGE_SIZE, total: 0, totalPages: 0, capped: false };
 
-    // Escape LIKE/ILIKE metacharacters in the raw user input so a literal
-    // "%" or "_" is matched as a literal character instead of being
-    // interpreted as a SQL wildcard (a bare "%" was matching every row).
-    // Backslash is escaped first so we don't double-escape the escapes we
-    // just inserted. Paired with `ESCAPE '\'` on every ILIKE clause below.
-    const likeSafeQ = q.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+    if (!built) return res.json({ ...empty, query: null });
+
+    const hasCriteria =
+      built.echo.q.length > 0 ||
+      built.echo.with.length > 0 ||
+      built.echo.mode ||
+      built.echo.map ||
+      built.echo.cycle != null;
+    if (!hasCriteria) return res.json({ ...empty, query: built.echo });
 
     try {
-      // Build the WHERE clause and its parameter list together so the
-      // placeholder count in the SQL text always matches the values array
-      // passed to pg — a mismatch (e.g. referencing only $2 while never
-      // using $1) makes Postgres reject the query outright, either with
-      // "bind message supplies N parameters, but prepared statement
-      // requires M" or, when a placeholder is skipped entirely, "could
-      // not determine data type of parameter $N" (Postgres can't infer a
-      // type for a parameter that never appears anywhere in the query text
-      // — this was exactly the "id"/"mapid" search bug: the query only
-      // referenced $2, so $1 had no context to infer a type from).
-      let whereClause;
-      let baseParams;
-      switch (field) {
-        case "username":
-          baseParams = [likeSafeQ];
-          whereClause = `rp.username ILIKE '%' || $1 || '%' ESCAPE '\\'`;
-          break;
-        case "id":
-          baseParams = [q];
-          whereClause = `r.id::text = $1`;
-          break;
-        case "mapid":
-          baseParams = [q];
-          whereClause = `r.mapid::text = $1`;
-          break;
-        case "mapname":
-          baseParams = [likeSafeQ];
-          whereClause = `m.name ILIKE '%' || $1 || '%' ESCAPE '\\'`;
-          break;
-        default:
-          // $1 = raw value, reused for both exact-match columns.
-          // $2 = escaped value, reused for both ILIKE columns.
-          baseParams = [q, likeSafeQ];
-          whereClause = `
-            r.id::text = $1
-            OR r.mapid::text = $1
-            OR rp.username ILIKE '%' || $2 || '%' ESCAPE '\\'
-            OR m.name ILIKE '%' || $2 || '%' ESCAPE '\\'
-          `;
-      }
+      const fromWhere = `
+        FROM replays r
+        LEFT JOIN replay_meta rm ON rm.cycle = r.cycle AND rm.replay_id = r.id
+        WHERE ${built.where}
+      `;
 
-      // Total distinct matching replays — mirrors the joins in the main
-      // query so the count reflects exactly what's filterable, not raw
-      // joined row count (a plain COUNT(*) here would over-count replays
-      // with multiple players).
       const countResult = await pool.query(
-        `
-        SELECT COUNT(*)::int AS count
-        FROM (
-          SELECT DISTINCT r.cycle, r.id
-          FROM replays r
-          LEFT JOIN replay_players rp
-            ON rp.cycle = r.cycle
-            AND rp.replay_id = r.id
-          LEFT JOIN LATERAL (
-            SELECT name
-            FROM maps m2
-            WHERE m2.mapid = r.mapid
-            ORDER BY m2.version DESC
-            LIMIT 1
-          ) m ON true
-          WHERE ${whereClause}
-        ) sub
-        `,
-        baseParams
+        `SELECT COUNT(*)::int AS count FROM (SELECT 1 ${fromWhere} LIMIT ${COUNT_CAP + 1}) s`,
+        built.params
       );
-
-      const total = countResult.rows[0]?.count ?? 0;
+      const rawCount = countResult.rows[0]?.count ?? 0;
+      const capped = rawCount > COUNT_CAP;
+      const total = Math.min(rawCount, COUNT_CAP);
       const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-      // Estimated dates: cycles whose replays were bulk-imported (cycle 5
-      // came from the Mongo archive, so its fetched_at is just the import
-      // date) get an approximate upload day from replay_cycle_days, a
-      // per-day replay-ID range table modelled on cycle 6's upload pattern.
-      // `estimated_day` is a plain 'YYYY-MM-DD' string so the browser shows
-      // the same day regardless of timezone; `played_at` is what we sort on.
-      const result = await pool.query(
-        `
-        SELECT
-          r.id::text AS id,
-          r.cycle,
-          r.mapid::text AS mapid,
-          m.name AS mapname,
-          r.fetched_at,
-          to_char(rcd.day, 'YYYY-MM-DD') AS estimated_day,
-          COALESCE(rcd.day::timestamptz, r.fetched_at) AS played_at,
-          COALESCE(
-            array_remove(array_agg(rp.username ORDER BY rp.username), NULL),
-            '{}'
-          ) AS players
-        FROM replays r
-        LEFT JOIN replay_players rp
-          ON rp.cycle = r.cycle
-          AND rp.replay_id = r.id
-        LEFT JOIN LATERAL (
-          SELECT name
-          FROM maps m2
-          WHERE m2.mapid = r.mapid
-          ORDER BY m2.version DESC
-          LIMIT 1
-        ) m ON true
-        LEFT JOIN replay_cycle_days rcd
-          ON rcd.cycle = r.cycle
-          AND r.id BETWEEN rcd.first_id AND rcd.last_id
-        WHERE ${whereClause}
-        GROUP BY r.cycle, r.id, r.mapid, m.name, r.fetched_at, rcd.day
-        ORDER BY played_at DESC, r.id DESC
-        LIMIT $${baseParams.length + 1} OFFSET $${baseParams.length + 2}
-        `,
-        [...baseParams, PAGE_SIZE, offset]
+      const n = built.params.length;
+      const rows = await enrichKeys(
+        pool,
+        `SELECT r.cycle, r.id, r.mapid, r.fetched_at
+         ${fromWhere}
+         ORDER BY ${built.order.replace(/(cycle|id)/g, "r.$1")}
+         LIMIT $${n + 1} OFFSET $${n + 2}`,
+        [...built.params, PAGE_SIZE, offset],
+        built.order
       );
 
-      return res.json({
-        results: result.rows,
-        page,
-        pageSize: PAGE_SIZE,
-        total,
-        totalPages,
-      });
+      return res.json({ results: rows, page, pageSize: PAGE_SIZE, total, totalPages, capped, query: built.echo });
     } catch (err) {
       console.error("GET /api/search failed:", err);
       return sendDbError(res, err, "Something went wrong running that search. Please try again.");
+    }
+  });
+
+  // ─── Recent replays (homepage feed) ─────────────────────────────────────
+  app.get("/api/recent", async (req, res) => {
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 9, 1), 24);
+    try {
+      const rows = await enrichKeys(
+        pool,
+        `SELECT r.cycle, r.id, r.mapid, r.fetched_at
+         FROM replays r
+         ORDER BY r.cycle DESC, r.id DESC
+         LIMIT $1`,
+        [limit]
+      );
+      res.setHeader("Cache-Control", "public, max-age=30");
+      return res.json({ results: rows });
+    } catch (err) {
+      console.error("GET /api/recent failed:", err);
+      return sendDbError(res, err, "We couldn't load recent replays.");
+    }
+  });
+
+  // ─── More on this map (watch page) ──────────────────────────────────────
+  app.get("/api/related", async (req, res) => {
+    const mapid = String(req.query.mapid ?? "");
+    const id = String(req.query.id ?? "");
+    const cycle = String(req.query.cycle ?? "");
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 4, 1), 12);
+
+    if (!isDigits(mapid)) return res.json({ results: [] });
+
+    try {
+      const rows = await enrichKeys(
+        pool,
+        `SELECT r.cycle, r.id, r.mapid, r.fetched_at
+         FROM replays r
+         WHERE r.mapid = $1::bigint
+           AND NOT (r.id::text = $2 AND r.cycle::text = $3)
+         ORDER BY r.cycle DESC, r.id DESC
+         LIMIT $4`,
+        [mapid, id, cycle, limit]
+      );
+      return res.json({ results: rows });
+    } catch (err) {
+      console.error("GET /api/related failed:", err);
+      return sendDbError(res, err, "We couldn't load related replays.");
     }
   });
 }

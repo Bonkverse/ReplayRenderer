@@ -7,6 +7,13 @@ import { GIFEncoder, quantize, applyPalette } from "gifenc";
 
 const STEP_DURATION = 30;
 const STEPS_PER_SEC = 30;
+const SPEEDS = [0.5, 1, 1.5, 2];
+
+// 4.2 → "0:04"
+function formatClock(sec) {
+  const s = Math.max(0, Math.floor(sec || 0));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
 
 const ReplayPlayer = forwardRef(function ReplayPlayer({
   blob,
@@ -16,6 +23,10 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
   height = 500,
   fullscreenTargetId,
   onExportStateChange,
+  // Start paused by default so viewers press play themselves; a shared link
+  // can open at a moment via initialTime (seconds).
+  autoplay = false,
+  initialTime = 0,
 }, ref) {
   const playerRootRef = useRef(null);
   const containerRef = useRef(null);
@@ -23,7 +34,11 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
   const hideTimer = useRef(null);
 
   const [ready, setReady] = useState(false);
-  const [playing, setPlaying] = useState(true);
+  const [playing, setPlaying] = useState(autoplay);
+  const playingRef = useRef(autoplay);
+  playingRef.current = playing;
+  // Playback speed: multiplies how fast the playhead advances per frame.
+  const [rate, setRate] = useState(1);
   const [step, setStep] = useState(0);
   const [endStep, setEndStep] = useState(1);
   const [exporting, setExporting] = useState(false); // legacy webm fallback path
@@ -145,14 +160,19 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
     // anywhere in the fullscreen view keeps controls alive.
     const fsShell = isFs ? document.getElementById(fullscreenTargetId) : null;
 
+    // Controls stay up while paused (there's nothing to watch behind them
+    // and the viewer is likely about to use them); they only auto-hide
+    // during playback.
     const show = () => {
       setControlsVisible(true);
       clearTimeout(hideTimer.current);
-      hideTimer.current = setTimeout(() => setControlsVisible(false), 2500);
+      hideTimer.current = setTimeout(() => {
+        if (playingRef.current) setControlsVisible(false);
+      }, 2500);
     };
     const hideNow = () => {
       clearTimeout(hideTimer.current);
-      setControlsVisible(false);
+      if (playingRef.current) setControlsVisible(false);
     };
 
     show();
@@ -173,6 +193,18 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
       clearTimeout(hideTimer.current);
     };
   }, [isFs, fullscreenTargetId]);
+
+  // Pausing always brings the controls back.
+  useEffect(() => {
+    if (!playing) setControlsVisible(true);
+  }, [playing]);
+
+  // Open at a shared moment (?t=) once the replay is ready.
+  useEffect(() => {
+    if (!ready || !(initialTime > 0)) return;
+    seekToStep(Math.round(initialTime * STEPS_PER_SEC));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready]);
 
   function resetAudio(core) {
     try {
@@ -551,7 +583,7 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
 
     async function setup() {
       setReady(false);
-      setPlaying(true);
+      setPlaying(autoplay);
       setStep(0);
       setEndStep(1);
 
@@ -774,7 +806,7 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
           ? currentEngine.computed
           : currentEngine.replay.es || 0;
 
-        currentEngine.playhead += dt * STEPS_PER_SEC;
+        currentEngine.playhead += dt * STEPS_PER_SEC * rate;
 
         if (currentEngine.playhead >= effectiveEnd) {
           currentEngine.playhead = effectiveEnd;
@@ -801,7 +833,7 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
       const currentEngine = engine.current;
       if (currentEngine) cancelAnimationFrame(currentEngine.raf);
     };
-  }, [ready, playing]);
+  }, [ready, playing, rate]);
 
   function seekToStep(target) {
     const e = engine.current;
@@ -935,6 +967,8 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
   useImperativeHandle(ref, () => ({
     exportMp4: () => exportReplayMp4(),
     exportGif: () => exportReplayGif(),
+    // Current playhead in seconds, for "share at this moment" links.
+    getTime: () => (engine.current?.playhead ?? 0) / STEPS_PER_SEC,
   }));
 
   useEffect(() => {
@@ -996,24 +1030,7 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
           !controlsVisible ? "replay-toolbar--hidden" : ""
         }`}
       >
-        <button
-          className="icon-btn"
-          title={playing ? "Pause" : "Play"}
-          onClick={togglePlayPause}
-          disabled={!ready}
-        >
-          {playing ? "⏸" : "▶"}
-        </button>
-
-        <button
-          className="icon-btn"
-          title="Restart"
-          onClick={() => resetReplayToStart({ autoplay: true })}
-          disabled={!ready}
-        >
-          ↺
-        </button>
-
+        {/* Timeline sits above the buttons, like most video players */}
         <input
           className="scrubber"
           type="range"
@@ -1022,25 +1039,60 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
           value={step}
           onChange={(ev) => onScrub(ev.target.value)}
           disabled={!ready}
+          aria-label="Seek"
+          aria-valuetext={`${formatClock(step / STEPS_PER_SEC)} of ${formatClock(endStep / STEPS_PER_SEC)}`}
         />
 
-        <span className="time-label">
-          {(step / STEPS_PER_SEC).toFixed(1)}s /{" "}
-          {(endStep / STEPS_PER_SEC).toFixed(1)}s
-        </span>
+        <div className="toolbar-row">
+          <button
+            className="icon-btn"
+            title={playing ? "Pause (space)" : "Play (space)"}
+            aria-label={playing ? "Pause" : "Play"}
+            onClick={togglePlayPause}
+            disabled={!ready}
+          >
+            {playing ? "⏸" : "▶"}
+          </button>
 
-        <button
-          className="icon-btn"
-          title={isFs ? "Exit fullscreen" : "Fullscreen"}
-          aria-label={isFs ? "Exit fullscreen" : "Fullscreen"}
-          onClick={toggleFullscreen}
-          disabled={!ready}
-        >
-          {isFs ? "✕" : "⛶"}
-        </button>
+          <button
+            className="icon-btn"
+            title="Restart"
+            aria-label="Restart"
+            onClick={() => resetReplayToStart({ autoplay: true })}
+            disabled={!ready}
+          >
+            ↺
+          </button>
+
+          <span className="time-label">
+            {formatClock(step / STEPS_PER_SEC)} / {formatClock(endStep / STEPS_PER_SEC)}
+          </span>
+
+          <span className="toolbar-spacer" />
+
+          <button
+            className="icon-btn icon-btn--text"
+            title="Playback speed"
+            aria-label={`Playback speed ${rate}×. Change speed`}
+            onClick={() => setRate((r) => SPEEDS.at((SPEEDS.indexOf(r) + 1) % SPEEDS.length))}
+            disabled={!ready}
+          >
+            {rate}×
+          </button>
+
+          <button
+            className="icon-btn"
+            title={isFs ? "Exit fullscreen (f)" : "Fullscreen (f)"}
+            aria-label={isFs ? "Exit fullscreen" : "Fullscreen"}
+            onClick={toggleFullscreen}
+            disabled={!ready}
+          >
+            {isFs ? "✕" : "⛶"}
+          </button>
+        </div>
       </div>
 
-      {!ready && <div>Loading replay…</div>}
+      {!ready && <div className="player-loading">Loading replay…</div>}
     </div>
   );
 });
