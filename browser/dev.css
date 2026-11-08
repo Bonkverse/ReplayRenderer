@@ -1885,3 +1885,134 @@ body.no-scroll {
     display: none;
   }
 }
+
+/* ─── Live collector status (home) ────────────────────────────────────────── */
+
+.live {
+  margin: -4px 0 12px;
+  padding: 10px 14px;
+  background: var(--panel);
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-panel);
+  overflow: hidden;
+  position: relative;
+}
+
+.live__row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  font-size: 15px;
+}
+
+.live__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--action);
+  flex: 0 0 auto;
+}
+
+.live--fetching .live__dot {
+  animation: bv-pulse 1s ease-in-out infinite;
+}
+
+.live--rate_limited .live__dot,
+.live--retrying .live__dot {
+  background: #ffcc66;
+}
+
+.live--offline .live__dot {
+  background: var(--muted);
+}
+
+.live__headline {
+  font-weight: 500;
+}
+
+.live__clock {
+  font-variant-numeric: tabular-nums;
+  color: var(--action);
+}
+
+.live__last {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.live__bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.live__bar > div {
+  height: 100%;
+  background: var(--action);
+  transform-origin: left center;
+  transition: transform 1s linear;
+}
+
+.new-note {
+  min-height: 0;
+  margin: 0 0 12px;
+  color: var(--action);
+  font-weight: 500;
+  font-size: 15px;
+}
+
+.new-note:empty {
+  margin: 0;
+}
+
+.card__media {
+  position: relative;
+}
+
+.card__new {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--action);
+  color: var(--action-ink);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.card.is-new .thumb {
+  border-color: var(--action);
+  box-shadow: 0 0 0 2px var(--action-tint);
+}
+
+@keyframes bv-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live--fetching .live__dot {
+    animation: none;
+  }
+  .live__bar > div {
+    transition: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .live__row {
+    font-size: 14px;
+  }
+  .live__last {
+    margin-left: 0;
+    width: 100%;
+    font-size: 13px;
+  }
+}
