@@ -376,7 +376,15 @@ export function registerPlayerRoutes(app, pool, { enrichKeys, sendDbError }) {
   //
   // GET /api/players/lookup?names=a&names=b (up to 60) → replay totals for
   // each registered name that has replays, for player search cards on
-  // Bonkverse. Names without replays are simply missing from the results.
+  // Bonkverse and its public API. Names without replays are simply missing
+  // from the results.
+  //
+  // Each result: username (latest spelling), games, level (in their latest
+  // replay), peak_level, last ({cycle, id}), and when that latest replay was
+  // seen: seen_at is the exact collection time for live-collected replays
+  // (null otherwise); seen_day is always set, and seen_estimated says it
+  // came from replay_cycle_days (cycle 5, the cycle 6 backlog) rather than
+  // a live fetch.
   app.get("/api/players/lookup", async (req, res) => {
     const raw = req.query.names;
     const names = [...new Set((Array.isArray(raw) ? raw : raw == null ? [] : [raw])
@@ -386,12 +394,32 @@ export function registerPlayerRoutes(app, pool, { enrichKeys, sendDbError }) {
     if (names.length === 0) return res.json({ results: [] });
     try {
       const result = await pool.query(
-        `SELECT (array_agg(rp.username ORDER BY rp.cycle DESC, rp.replay_id DESC))[1] AS username,
-                count(*)::int AS games,
-                (array_agg(rp.level ORDER BY rp.cycle DESC, rp.replay_id DESC))[1] AS level
-         FROM replay_participants rp
-         WHERE NOT rp.guest AND lower(rp.username) = ANY($1::text[])
-         GROUP BY lower(rp.username)`,
+        `WITH hits AS (
+           SELECT rp.cycle, rp.replay_id, rp.username, rp.level
+           FROM replay_participants rp
+           WHERE NOT rp.guest AND lower(rp.username) = ANY($1::text[])
+         ),
+         totals AS (
+           SELECT lower(username) AS k, count(*)::int AS games, max(level) AS peak_level
+           FROM hits GROUP BY 1
+         ),
+         latest AS (
+           SELECT DISTINCT ON (lower(username))
+                  lower(username) AS k, username, level, cycle, replay_id
+           FROM hits
+           ORDER BY lower(username), cycle DESC, replay_id DESC
+         )
+         SELECT l.username, t.games, l.level, t.peak_level,
+                json_build_object('cycle', l.cycle, 'id', l.replay_id::text) AS last,
+                CASE WHEN rcd.day IS NULL THEN r.fetched_at END AS seen_at,
+                to_char(COALESCE(rcd.day, (r.fetched_at AT TIME ZONE 'UTC')::date), 'YYYY-MM-DD')
+                  AS seen_day,
+                rcd.day IS NOT NULL AS seen_estimated
+         FROM latest l
+         JOIN totals t ON t.k = l.k
+         JOIN replays r ON r.cycle = l.cycle AND r.id = l.replay_id
+         LEFT JOIN replay_cycle_days rcd
+           ON rcd.cycle = l.cycle AND l.replay_id BETWEEN rcd.first_id AND rcd.last_id`,
         [names]
       );
       res.setHeader("Cache-Control", "public, max-age=300");

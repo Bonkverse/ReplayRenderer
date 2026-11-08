@@ -74,9 +74,12 @@ separate). Guests never get a profile: their names aren't unique.
   how many registered players have each level as their highest seen in
   replays, plus the total. Recomputed at most every 6 hours (it reads the
   whole participants table).
-- `GET /api/players/lookup?names=a&names=b` → replay totals (games, latest
-  level) for up to 60 exact registered names; names with no replays are
-  left out. Used by Bonkverse's player search cards.
+- `GET /api/players/lookup?names=a&names=b` → for up to 60 exact registered
+  names: games, level in their latest replay, peak level, that replay
+  (`last: {cycle, id}`), and when it was seen (`seen_at` exact for
+  live-collected replays, else null; `seen_day` always; `seen_estimated`
+  when the day comes from cycle estimates). Names with no replays are left
+  out. Used by Bonkverse's player search cards and its public API.
 - `GET /api/players?q=abc` → up to 10 registered names starting with `q`
   (3+ characters), most-played first.
 
