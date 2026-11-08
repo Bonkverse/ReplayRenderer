@@ -2016,3 +2016,314 @@ body.no-scroll {
     font-size: 13px;
   }
 }
+
+/* ─── Advanced search: the rule builder (browser/app/RuleBuilder.jsx) ──────
+   One line per rule: [Where / AND / OR] [field] [condition] [value] [×].
+   On phones each line becomes a small card. */
+
+.chip--advanced {
+  margin-left: auto;
+}
+
+.chip--advanced + .chip--filters {
+  margin-left: 0;
+}
+
+.qb {
+  margin-top: 16px;
+  padding: 20px;
+  border-radius: var(--radius-panel);
+  border: 1px solid var(--outline);
+  background: var(--panel);
+}
+
+.qb__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.qb__title {
+  margin: 0 0 4px;
+  font-size: 20px;
+}
+
+.qb__hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.qb__rules {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.qb__rule {
+  display: grid;
+  grid-template-columns: 76px minmax(150px, 0.9fr) minmax(160px, 1fr) minmax(220px, 1.6fr) 40px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 10px;
+  border: 1px solid var(--outline);
+  background: var(--inset);
+}
+
+.qb__rule:focus-within {
+  border-color: rgba(71, 216, 196, 0.6);
+}
+
+.qb__conn {
+  display: flex;
+  justify-content: center;
+}
+
+.qb__where {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.qb__select,
+.qb__input {
+  display: flex;
+  min-width: 0;
+}
+
+.qb__select select,
+.qb__input input {
+  width: 100%;
+  min-height: 40px;
+  box-sizing: border-box;
+  padding: 0 12px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--outline);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 15px;
+}
+
+.qb__select select {
+  cursor: pointer;
+}
+
+.qb__input input {
+  white-space: pre;
+}
+
+.qb__input input[type="date"] {
+  color-scheme: dark;
+}
+
+.qb__select select:focus,
+.qb__input input:focus {
+  outline: none;
+  border-color: var(--action);
+  box-shadow: 0 0 0 3px rgba(71, 216, 196, 0.18);
+}
+
+.qb__select--conn select {
+  min-height: 30px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border-color: rgba(71, 216, 196, 0.5);
+  background: var(--action-tint);
+  color: var(--action);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.qb__field select {
+  font-weight: 500;
+}
+
+.qb__value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.qb__value > .qb__select,
+.qb__value > .qb__input {
+  flex: 1;
+}
+
+.qb__value > .qb__input--num {
+  flex: 0 1 120px;
+}
+
+.qb__and,
+.qb__unit {
+  color: var(--muted);
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.qb__case {
+  position: relative;
+  flex-shrink: 0;
+  display: inline-flex;
+  cursor: pointer;
+}
+
+.qb__case input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.qb__case span[aria-hidden] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  box-sizing: border-box;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--outline);
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.qb__case input:checked + span {
+  border-color: var(--action);
+  background: var(--action-tint);
+  color: var(--action);
+}
+
+.qb__case input:focus-visible + span {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
+
+.qb__remove {
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--muted);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.qb__remove:hover {
+  color: var(--danger);
+  background: rgba(255, 138, 128, 0.1);
+}
+
+.qb__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 18px;
+  margin-top: 14px;
+}
+
+.qb__add,
+.qb__clear {
+  min-height: 40px;
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.qb__add {
+  color: var(--action);
+}
+
+.qb__clear {
+  color: #ffb454;
+}
+
+.qb__add:hover,
+.qb__clear:hover {
+  text-decoration: underline;
+}
+
+.qb__spacer {
+  flex: 1;
+}
+
+.qb__examples {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--outline);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.qb__example {
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px dashed var(--outline);
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.qb__example:hover {
+  border-style: solid;
+  border-color: var(--action);
+  color: var(--action);
+}
+
+.applied li {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.applied__conn {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--action);
+}
+
+@media (max-width: 760px) {
+  .qb {
+    padding: 16px 12px;
+  }
+
+  .qb__rule {
+    grid-template-columns: auto minmax(0, 1fr) 40px;
+    grid-template-areas: "conn field remove" "op op op" "value value value";
+    padding: 10px;
+  }
+
+  .qb__conn { grid-area: conn; justify-content: flex-start; }
+  .qb__field { grid-area: field; }
+  .qb__op { grid-area: op; }
+  .qb__value { grid-area: value; flex-wrap: wrap; }
+  .qb__remove { grid-area: remove; }
+  .qb__spacer { display: none; }
+  .qb__bar .btn { flex: 1; }
+}

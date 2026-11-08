@@ -3,6 +3,8 @@ import { getJson } from "../api.js";
 import { navigate, searchFromParams, searchToQuery, searchUrl, SEARCH_DEFAULTS } from "../router.js";
 import { SearchBox, ReplayRow, RowSkeleton, Pagination, PageJump, scopeLabel } from "../components.jsx";
 import { MODE_LABELS, modeLabel, ABOUT_DATES_URL } from "../format.js";
+import RuleBuilder from "../RuleBuilder.jsx";
+import { describeRule, rulesToParams } from "../../../shared/replayQuery.js";
 
 const GUEST_OPTIONS = [
   ["exclude", "Registered only"],
@@ -237,6 +239,8 @@ export default function Search({ route }) {
   const [error, setError] = useState(null);
   const [attempt, setAttempt] = useState(0);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  // Open when arriving from the home page's "Advanced search".
+  const [advancedOpen, setAdvancedOpen] = useState(() => route.params.get("advanced") === "1");
   const filtersBtnRef = useRef(null);
 
   const go = (next) => navigate(searchUrl(next));
@@ -284,7 +288,8 @@ export default function Search({ route }) {
   const results = data?.results ?? [];
   const total = data?.total ?? 0;
   const filterCount = activeFilterCount(search);
-  const hasCriteria = search.q || filterCount > 0;
+  const hasCriteria = search.q || filterCount > 0 || search.rules.length > 0;
+  const rulesKey = new URLSearchParams(rulesToParams(search.rules)).toString();
 
   const heading =
     search.scope === "username" && search.q
@@ -302,6 +307,12 @@ export default function Search({ route }) {
     search.mode && { key: "mode", label: modeLabel(search.mode), remove: () => go({ ...search, mode: "", page: 1 }) },
     search.map && { key: "map", label: `Map: ${search.map}`, remove: () => go({ ...search, map: "", page: 1 }) },
     search.cycle && { key: "cycle", label: `Cycle ${search.cycle}`, remove: () => go({ ...search, cycle: "", page: 1 }) },
+    ...search.rules.map((rule, i) => ({
+      key: `rule-${i}`,
+      conn: i > 0 ? rule.conn.toUpperCase() : null,
+      label: describeRule(rule),
+      remove: () => go({ ...search, rules: search.rules.filter((_, j) => j !== i), page: 1 }),
+    })),
     search.guests !== SEARCH_DEFAULTS.guests && {
       key: "guests",
       label: search.guests === "only" ? "Guests only" : "Including guests",
@@ -325,7 +336,18 @@ export default function Search({ route }) {
           filterCount={filterCount}
           onOpenFilters={() => setFiltersOpen(true)}
           filtersButtonRef={filtersBtnRef}
+          ruleCount={search.rules.length}
+          advancedOpen={advancedOpen}
+          onToggleAdvanced={() => setAdvancedOpen((o) => !o)}
         />
+        {advancedOpen && (
+          <RuleBuilder
+            key={rulesKey}
+            rules={search.rules}
+            onClose={() => setAdvancedOpen(false)}
+            onSearch={(rules) => go({ ...search, rules, page: 1 })}
+          />
+        )}
       </div>
 
       <div className={`search-layout${filtersOpen ? " has-filters" : ""}`}>
@@ -389,6 +411,7 @@ export default function Search({ route }) {
             <ul className="applied" aria-label="Applied filters">
               {chips.map((c) => (
                 <li key={c.key}>
+                  {c.conn && <span className="applied__conn">{c.conn}</span>}
                   <button className="chip is-active chip--removable" onClick={c.remove} aria-label={`Remove filter: ${c.label}`}>
                     {c.label} <span aria-hidden="true">✕</span>
                   </button>
@@ -399,7 +422,12 @@ export default function Search({ route }) {
 
           {!hasCriteria ? (
             <div className="notice">
-              <p>Type a player, map, or replay ID to search.</p>
+              <p>Type a player, map, or replay ID to search, or build a search from rules.</p>
+              {!advancedOpen && (
+                <button className="btn" onClick={() => setAdvancedOpen(true)}>
+                  Open advanced search
+                </button>
+              )}
             </div>
           ) : error ? (
             <div className="notice notice--error">
@@ -425,7 +453,7 @@ export default function Search({ route }) {
                 <button
                   className="btn"
                   onClick={() =>
-                    go({ ...SEARCH_DEFAULTS, q: search.q, scope: search.scope, sort: search.sort })
+                    go({ ...SEARCH_DEFAULTS, rules: [], q: search.q, scope: search.scope, sort: search.sort })
                   }
                 >
                   Clear filters
