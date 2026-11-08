@@ -81,10 +81,16 @@
         background: #141f2b;
         color: #edf4fb;
         font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-        overflow-y: auto;
-        overflow-x: hidden;
         -webkit-text-size-adjust: 100%;
         -webkit-tap-highlight-color: transparent;
+      }
+
+      /* The page scrolls on <html> only. Giving <body> its own overflow made
+         it a separate (never-scrolling) scroll container, and with
+         overscroll-behavior on it the mouse wheel stopped there instead of
+         scrolling the page. */
+      html {
+        overflow-x: hidden;
         overscroll-behavior-y: none;
       }
 
