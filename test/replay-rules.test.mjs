@@ -172,6 +172,18 @@ describe("searching", { skip: !DB && "set TEST_DATABASE_URL to run" }, () => {
     });
   }
 
+  test("the DBID search tab finds a player's replays and names them", async () => {
+    assert.deepEqual(await ids("q=500&scope=dbid"), [1, 2, 5]);
+    const body = await (await fetch(`${base}/api/search?q=500&scope=dbid`)).json();
+    assert.equal(body.query.dbidPlayer, "alpha");
+    assert.deepEqual(await ids("q=abc&scope=dbid"), []); // not a number
+  });
+
+  test("\"All\" with a number also matches a DBID", async () => {
+    assert.deepEqual(await ids("q=9000000"), [3]); // _x_'s DBID
+    assert.deepEqual(await ids("q=2"), [2]); // still a replay ID
+  });
+
   test("guests can be included for name rules", async () => {
     assert.deepEqual(await ids(`guests=include&${qs([rule("player", "is", "guesty")])}`), [2]);
   });

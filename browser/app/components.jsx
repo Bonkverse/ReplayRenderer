@@ -24,6 +24,7 @@ export const SCOPES = [
   ["id", "Replay ID"],
   ["mapid", "Map ID"],
   ["mapname", "Map name"],
+  ["dbid", "DBID"],
 ];
 export const scopeLabel = (v) => SCOPES.find(([k]) => k === v)?.[1] ?? "All";
 
@@ -255,7 +256,7 @@ function matchedNames(item, search) {
   if (!search) return new Set();
   const out = new Set();
   const q = lower(search.q);
-  const added = (search.with ?? []).map(lower);
+  const added = [...(search.with ?? []), ...(search.dbidPlayer ? [search.dbidPlayer] : [])].map(lower);
   for (const p of item.players ?? []) {
     const n = lower(p.username);
     const nameScope = search.scope === "username" || search.scope === "all";
