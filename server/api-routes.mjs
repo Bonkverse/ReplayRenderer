@@ -401,6 +401,66 @@ export function registerApiRoutes(app, pool) {
     }
   });
 
+  // ─── Live collector status (homepage countdown) ─────────────────────────
+  //
+  // What ReplayFetcher is doing and when it will next ask bonk.io for
+  // replays (it records this before every wait), plus the newest stored
+  // replay. With since_cycle/since_id, also counts replays added after that
+  // key, so the page can say "12 new replays added". server_now lets the
+  // browser correct for its own clock being off.
+  app.get("/api/status", async (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    const sinceCycle = String(req.query.since_cycle ?? "");
+    const sinceId = String(req.query.since_id ?? "");
+    const hasSince = isDigits(sinceCycle) && isDigits(sinceId);
+
+    try {
+      let scraper = null;
+      try {
+        const st = await pool.query(
+          `SELECT status, next_fetch_at, status_at, last_run_added, last_run_at
+           FROM scraper_state WHERE id = 1`
+        );
+        scraper = st.rows[0] ?? null;
+      } catch (err) {
+        // 42703 = column doesn't exist: the scraper with status reporting
+        // isn't deployed yet. Answer without it instead of failing.
+        if (err.code !== "42703") throw err;
+      }
+
+      const latest = await pool.query(
+        `SELECT cycle, id::text AS id FROM replays ORDER BY cycle DESC, id DESC LIMIT 1`
+      );
+
+      let addedSince = null;
+      if (hasSince) {
+        const added = await pool.query(
+          `SELECT COUNT(*)::int AS n FROM (
+             SELECT 1 FROM replays
+             WHERE (cycle, id) > ($1::int, $2::bigint)
+             LIMIT 5000
+           ) s`,
+          [sinceCycle, sinceId]
+        );
+        addedSince = added.rows[0].n;
+      }
+
+      return res.json({
+        server_now: new Date().toISOString(),
+        status: scraper?.status ?? null,
+        next_fetch_at: scraper?.next_fetch_at ?? null,
+        status_at: scraper?.status_at ?? null,
+        last_run_added: scraper?.last_run_added ?? null,
+        last_run_at: scraper?.last_run_at ?? null,
+        latest: latest.rows[0] ?? null,
+        added_since: addedSince,
+      });
+    } catch (err) {
+      console.error("GET /api/status failed:", err);
+      return sendDbError(res, err, "We couldn't load the collector status.");
+    }
+  });
+
   // ─── More on this map (watch page) ──────────────────────────────────────
   app.get("/api/related", async (req, res) => {
     const mapid = String(req.query.mapid ?? "");

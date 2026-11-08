@@ -304,11 +304,14 @@ export function ReplayRow({ item, search }) {
   );
 }
 
-export function ReplayCard({ item, compact = false }) {
+export function ReplayCard({ item, compact = false, isNew = false }) {
   return (
-    <li className={`card${compact ? " card--compact" : ""}`}>
+    <li className={`card${compact ? " card--compact" : ""}${isNew ? " is-new" : ""}`}>
       <a className="card__link" href={watchUrl(item)} onClick={(e) => openReplay(e, item)}>
-        <MapThumbnail mapid={item.mapid} className="card__thumb" />
+        <div className="card__media">
+          <MapThumbnail mapid={item.mapid} className="card__thumb" />
+          {isNew && <span className="card__new">New</span>}
+        </div>
         <div className="card__body">
           <h3 className="card__title">{item.mapname || "Unknown map"}</h3>
           <p className="card__meta">

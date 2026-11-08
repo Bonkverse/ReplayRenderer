@@ -1,13 +1,22 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { getJson } from "../api.js";
 import { navigate, searchUrl, SEARCH_DEFAULTS } from "../router.js";
 import { SearchBox, ReplayCard, CardSkeleton } from "../components.jsx";
+import LiveStatus from "../LiveStatus.jsx";
 
-// Homepage: one search entry point, with recent replays to browse under it.
+const keyOf = (r) => `${r.cycle}:${r.id}`;
+const newer = (a, b) => a.cycle > b.cycle || (a.cycle === b.cycle && Number(a.id) > Number(b.id));
+
+// Homepage: one search entry point, the live collector status, and recent
+// replays that refresh themselves when new ones are fetched.
 export default function Home() {
   const [recent, setRecent] = useState(null);
   const [error, setError] = useState(null);
   const [attempt, setAttempt] = useState(0);
+  const [newKeys, setNewKeys] = useState(() => new Set());
+  const [announcement, setAnnouncement] = useState(null);
+  const recentRef = useRef(null);
+  recentRef.current = recent;
 
   useEffect(() => {
     document.title = "Bonkverse Replays";
@@ -24,6 +33,28 @@ export default function Home() {
     return () => ctrl.abort();
   }, [attempt]);
 
+  // Called by LiveStatus when replays newer than our top card exist.
+  const onNew = useCallback(async (count) => {
+    try {
+      const prevTop = recentRef.current?.[0];
+      const data = await getJson("/api/recent?limit=9", { fresh: true });
+      const fresh = data.results ?? [];
+      setNewKeys(new Set(prevTop ? fresh.filter((r) => newer(r, prevTop)).map(keyOf) : []));
+      setRecent(fresh);
+      setAnnouncement(`${count.toLocaleString()} new replay${count === 1 ? "" : "s"} added`);
+    } catch {
+      // The next status check will try again.
+    }
+  }, []);
+
+  // Let the "N new replays added" note fade after a while.
+  useEffect(() => {
+    if (!announcement) return;
+    const t = setTimeout(() => setAnnouncement(null), 12_000);
+    return () => clearTimeout(t);
+  }, [announcement]);
+
+  const top = recent?.[0] ? { cycle: recent[0].cycle, id: recent[0].id } : null;
   const latestCycle = recent?.[0]?.cycle;
 
   return (
@@ -55,6 +86,17 @@ export default function Home() {
           )}
         </div>
 
+        {recent && <LiveStatus since={top} onNew={onNew} />}
+
+        <p className="new-note" role="status" aria-live="polite">
+          {announcement && (
+            <span>
+              <span aria-hidden="true">● </span>
+              {announcement}
+            </span>
+          )}
+        </p>
+
         {error ? (
           <div className="notice">
             <p>{error}</p>
@@ -69,7 +111,7 @@ export default function Home() {
         ) : (
           <ul className="cards">
             {recent.map((item) => (
-              <ReplayCard key={`${item.cycle}:${item.id}`} item={item} />
+              <ReplayCard key={keyOf(item)} item={item} isNew={newKeys.has(keyOf(item))} />
             ))}
           </ul>
         )}

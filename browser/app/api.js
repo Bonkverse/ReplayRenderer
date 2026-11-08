@@ -8,13 +8,16 @@ const CACHE_MAX = 40;
 
 /**
  * GET JSON with an AbortSignal, so a newer request can cancel a stale one.
- * List responses can be cached so Back to a result page is instant.
+ * List responses can be cached so Back to a result page is instant; pass
+ * fresh: true when the data is known to have changed.
  */
-export async function getJson(path, { signal, useCache = false } = {}) {
+export async function getJson(path, { signal, useCache = false, fresh = false } = {}) {
   const url = `${API_BASE}${path}`;
-  if (useCache && cache.has(url)) return cache.get(url);
+  if (useCache && !fresh && cache.has(url)) return cache.get(url);
 
-  const res = await fetch(url, { signal });
+  // fresh: skip the browser's HTTP cache too (e.g. /api/recent is cacheable
+  // for 30s, but a refresh after new replays arrive must see them).
+  const res = await fetch(url, { signal, cache: fresh ? "no-store" : "default" });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || "Something went wrong. Please try again.");
 
