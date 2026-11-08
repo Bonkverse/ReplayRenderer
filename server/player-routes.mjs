@@ -281,13 +281,21 @@ export function registerPlayerRoutes(app, pool, { enrichKeys, sendDbError }) {
     }
   });
 
+  // The player name from the path, or from ?name= on the query-string routes.
+  const nameFrom = (req) =>
+    req.params.name ?? (typeof req.query.name === "string" ? req.query.name : undefined);
+
   // ─── Full profile ───────────────────────────────────────────────────────
   //
   // GET /api/player/:name → summary, per-day games and level, weekday and
   // hour activity, modes, top maps, frequent co-players and teammates, and
   // the most recent replays (same shape as search results).
-  app.get("/api/player/:name", async (req, res) => {
-    const name = validPlayerName(req.params.name);
+  //
+  // GET /api/player?name=… is the same, for names that can't sit in a path:
+  // "." and ".." are dot segments, which clients and proxies resolve away
+  // (/api/player/.. becomes /api/).
+  app.get(["/api/player/:name", "/api/player"], async (req, res) => {
+    const name = validPlayerName(nameFrom(req));
     if (!name) return res.status(400).json({ error: "That isn't a valid username." });
 
     try {
@@ -343,8 +351,9 @@ export function registerPlayerRoutes(app, pool, { enrichKeys, sendDbError }) {
   //
   // GET /api/player/:name/map/:mapid → games, first/last day, room and mode
   // split, and the registered players they play it with most.
-  app.get("/api/player/:name/map/:mapid", async (req, res) => {
-    const name = validPlayerName(req.params.name);
+  // GET /api/player/map/:mapid?name=… is the same, with the name in the query.
+  app.get(["/api/player/:name/map/:mapid", "/api/player/map/:mapid"], async (req, res) => {
+    const name = validPlayerName(nameFrom(req));
     const mapid = String(req.params.mapid ?? "");
     if (!name || !/^\d{1,18}$/.test(mapid)) {
       return res.status(400).json({ error: "That isn't a valid player or map." });
