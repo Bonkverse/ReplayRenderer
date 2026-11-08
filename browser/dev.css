@@ -745,3 +745,318 @@ button {
   margin: 0;
   height: 100%;
 }
+/* ─── Fullscreen fallback (iPhone Safari has no element fullscreen) ───────── */
+
+/* ReplayPlayer adds .is-pseudo-fs to the player shell when the browser can't
+   do real fullscreen, pinning it over the whole viewport instead. */
+.player-shell.is-pseudo-fs {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: #0f172a;
+  border-radius: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+body.no-scroll {
+  overflow: hidden;
+}
+
+/* ─── Touch devices ───────────────────────────────────────────────────────── */
+
+@media (hover: none) {
+  .result-card:hover {
+    border-color: var(--border);
+    box-shadow: none;
+  }
+
+  .result-card:active {
+    background: #1b2740;
+    border-color: var(--teal);
+  }
+
+  .ghost-btn:hover {
+    border-color: var(--border);
+    color: var(--text);
+  }
+}
+
+@media (pointer: coarse) {
+  /* 44px is the comfortable minimum tap size on phones */
+  .icon-btn {
+    width: 44px;
+    height: 40px;
+    font-size: 18px;
+  }
+
+  .replay-toolbar--overlay {
+    padding: 28px 10px 10px;
+    gap: 8px;
+  }
+
+  .replay-toolbar--fs {
+    width: min(640px, calc(100vw - 32px));
+    bottom: calc(16px + env(safe-area-inset-bottom));
+    padding: 10px 14px;
+    gap: 10px;
+  }
+
+  .replay-toolbar--fs .icon-btn {
+    width: 48px;
+    height: 44px;
+  }
+
+  .replay-toolbar--fs .time-label {
+    font-size: 13px;
+    min-width: 0;
+    white-space: nowrap;
+  }
+}
+
+/* ─── Phones ──────────────────────────────────────────────────────────────── */
+
+@media (max-width: 640px) {
+  /* Top bar: one compact row (logo, search box, button), sitting below the
+     status bar / notch when the site is opened from the home screen. */
+  .topbar-inner {
+    gap: 10px;
+    padding: 10px max(12px, env(safe-area-inset-right)) 10px
+      max(12px, env(safe-area-inset-left));
+    padding-top: max(10px, env(safe-area-inset-top));
+  }
+
+  .brand-text {
+    display: none;
+  }
+
+  .brand-icon {
+    width: 34px;
+    height: 34px;
+  }
+
+  /* The field pills below the bar do the same job as this dropdown */
+  .search-bar select {
+    display: none;
+  }
+
+  .search-bar input {
+    font-size: 16px; /* under 16px, iOS zooms the page when the box is tapped */
+    min-height: 42px;
+    border-radius: 10px;
+  }
+
+  .primary-btn {
+    min-height: 42px;
+    border-radius: 10px;
+  }
+
+  .page {
+    padding: 12px max(12px, env(safe-area-inset-right)) 12px
+      max(12px, env(safe-area-inset-left));
+  }
+
+  /* Field pills: one swipeable row instead of wrapping */
+  .field-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    margin: 0 -12px 14px;
+    padding: 0 12px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .field-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .field-tabs .tab {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    padding: 9px 16px;
+    font-size: 14px;
+  }
+
+  .results-meta {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  /* Results: a list of rows (thumbnail left, details right), like an app,
+     instead of a grid of tall cards. */
+  .results-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .result-card {
+    flex-direction: row;
+    align-items: center;
+    border-radius: 12px;
+    padding: 8px;
+    gap: 2px;
+  }
+
+  .result-thumb {
+    width: 112px;
+    flex: 0 0 112px;
+    border-radius: 8px;
+  }
+
+  .result-thumb--empty {
+    border: 1px solid var(--border);
+  }
+
+  .result-body {
+    flex: 1;
+    min-width: 0;
+    padding: 2px 6px 2px 10px;
+    gap: 2px;
+  }
+
+  .result-title {
+    font-size: 15px;
+  }
+
+  .pagination {
+    gap: 8px;
+  }
+
+  .pagination .ghost-btn {
+    flex: 1;
+    min-height: 44px;
+    font-size: 14px;
+  }
+
+  .browse-empty {
+    min-height: 260px;
+  }
+
+  /* Replay page */
+  .back-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 40px;
+    margin-bottom: 4px;
+  }
+
+  .player-shell {
+    border-radius: 10px;
+  }
+
+  .replay-toolbar--overlay .time-label {
+    min-width: 0;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .title-row {
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 14px;
+  }
+
+  .title-row h2 {
+    font-size: 19px;
+  }
+
+  .action-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+
+  .action-row .ghost-btn {
+    min-height: 44px;
+    font-size: 14px;
+  }
+
+  /* Match chips: one swipeable row */
+  .chip-row {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    margin: 14px -12px 16px;
+    padding: 0 12px;
+    scrollbar-width: none;
+  }
+
+  .chip-row::-webkit-scrollbar {
+    display: none;
+  }
+
+  .data-card {
+    border-radius: 14px;
+  }
+
+  .tab {
+    padding: 13px 16px;
+  }
+
+  /* Let the panel grow with its content; the page scrolls instead of a
+     fixed-height box scrolling inside it. */
+  .tab-panel {
+    height: auto;
+    padding: 14px;
+    overflow-x: auto;
+  }
+
+  .info-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .info-block {
+    padding: 16px;
+  }
+
+  .info-block dl {
+    gap: 12px 16px;
+  }
+
+  .player-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .player-card {
+    padding: 12px;
+  }
+
+  .score-table {
+    font-size: 13px;
+  }
+
+  .score-table th,
+  .score-table td {
+    padding: 10px 8px;
+  }
+
+  .raw-json {
+    height: auto;
+    max-height: 60vh;
+  }
+
+  .export-overlay {
+    top: 8px;
+    right: 8px;
+    left: 8px;
+    font-size: 13px;
+  }
+
+  .export-bar {
+    flex: 1;
+    width: auto;
+  }
+
+  .site-footer {
+    padding-bottom: calc(32px + env(safe-area-inset-bottom));
+  }
+}
+
+/* Very narrow phones: drop the time readout so the scrubber keeps its room */
+@media (max-width: 360px) {
+  .replay-toolbar--overlay .time-label {
+    display: none;
+  }
+}
