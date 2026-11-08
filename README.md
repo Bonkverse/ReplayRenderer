@@ -60,10 +60,16 @@ separate). Guests never get a profile: their names aren't unique.
 
 - `GET /api/player/:name` → `summary` (games, current/peak level, first and
   last replay, active days), `days` (games and highest level per day),
-  `weekdays`, `hours` (UTC, live-collected replays only, with the sample
-  size), `modes`, top `maps`, `played_with` and `teammates` (registered
-  players only), and the six most `recent` replays. 404 when the name has no
-  registered replays. Cached for 5 minutes.
+  `weekdays`, `hours` (UTC), `live_hours` (replays per UTC hour, for the
+  viewer's own time zone), `sessions` (live replays under 30 minutes apart),
+  `level_ups` (each new highest level, with replays since the last one),
+  `rooms` (1v1 / free-for-all / teams / solo, quick play, typical room size,
+  maps played), `modes`, top 20 `maps` (with last day and room split),
+  `played_with`, `teammates` and `rivals` (registered players only), and the
+  six most `recent` replays. Hours and sessions only use live-collected
+  replays. 404 when the name has no registered replays. Cached for 5 minutes.
+- `GET /api/player/:name/map/:mapid` → that player on one map: games, first
+  and last day, room and mode split, and who they play it with.
 - `GET /api/players?q=abc` → up to 10 registered names starting with `q`
   (3+ characters), most-played first.
 

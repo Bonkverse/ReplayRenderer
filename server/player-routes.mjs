@@ -20,6 +20,7 @@
 const MAX_NAME_LENGTH = 100;
 const TOP_N = 10;
 const RECENT_N = 6;
+const MAPS_N = 20;
 
 // Every replay the player is in, with its date, mode and map. Referenced by
 // each section below; Postgres materialises it once per request.
@@ -36,7 +37,14 @@ const PLAYER_CTE = `
            COALESCE(rcd.day, (r.fetched_at AT TIME ZONE 'UTC')::date) AS day,
            rcd.day IS NULL AS live,
            rm.mode,
-           COALESCE(rm.teams, false) AS teams
+           COALESCE(rm.teams, false) AS teams,
+           COALESCE(rm.quickplay, false) AS quickplay,
+           rm.player_count,
+           -- Room kind: team modes; alone; two players; otherwise free-for-all.
+           CASE WHEN COALESCE(rm.teams, false) THEN 'teams'
+                WHEN rm.player_count <= 1 THEN 'solo'
+                WHEN rm.player_count = 2 THEN '1v1'
+                ELSE 'ffa' END AS room
     FROM mine m
     JOIN replays r ON r.cycle = m.cycle AND r.id = m.replay_id
     LEFT JOIN replay_cycle_days rcd
@@ -46,7 +54,7 @@ const PLAYER_CTE = `
   others AS (
     -- Other registered players in the same replays. Guests are left out:
     -- their names aren't identities.
-    SELECT d.cycle, d.replay_id, d.teams, d.team AS my_team,
+    SELECT d.cycle, d.replay_id, d.teams, d.team AS my_team, d.room, d.mapid,
            o.username, o.team
     FROM dated d
     JOIN replay_participants o
@@ -94,13 +102,64 @@ const PROFILE_SQL = `
       FROM (SELECT mode, count(*) AS games FROM dated GROUP BY mode) t) AS modes,
 
     (SELECT COALESCE(json_agg(json_build_object(
-        'mapid', mapid::text, 'name', name, 'games', games) ORDER BY games DESC, mapid), '[]')
+        'mapid', mapid::text, 'name', name, 'games', games, 'last_day', to_char(last_day, 'YYYY-MM-DD'),
+        'rooms', json_build_object('1v1', one_v_one, 'ffa', ffa, 'teams', teams_n)) ORDER BY games DESC, mapid), '[]')
       FROM (
-        SELECT t.mapid, t.games,
+        SELECT t.*,
                (SELECT name FROM maps mp WHERE mp.mapid = t.mapid ORDER BY version DESC LIMIT 1) AS name
-        FROM (SELECT mapid, count(*) AS games FROM dated WHERE mapid IS NOT NULL
-              GROUP BY mapid ORDER BY count(*) DESC, mapid LIMIT ${TOP_N}) t
+        FROM (SELECT mapid, count(*) AS games, max(day) AS last_day,
+                     count(*) FILTER (WHERE room = '1v1') AS one_v_one,
+                     count(*) FILTER (WHERE room = 'ffa') AS ffa,
+                     count(*) FILTER (WHERE room = 'teams') AS teams_n
+              FROM dated WHERE mapid IS NOT NULL
+              GROUP BY mapid ORDER BY count(*) DESC, mapid LIMIT ${MAPS_N}) t
       ) t2) AS maps,
+
+    -- What kind of rooms they play in.
+    (SELECT json_build_object(
+        '1v1', count(*) FILTER (WHERE room = '1v1'),
+        'ffa', count(*) FILTER (WHERE room = 'ffa'),
+        'teams', count(*) FILTER (WHERE room = 'teams'),
+        'solo', count(*) FILTER (WHERE room = 'solo'),
+        'quickplay', count(*) FILTER (WHERE quickplay),
+        'median_players', percentile_cont(0.5) WITHIN GROUP (ORDER BY player_count),
+        'distinct_maps', count(DISTINCT mapid)
+      ) FROM dated) AS rooms,
+
+    -- Each new highest level, in replay order. Replays only show levels, so
+    -- this is when a level was first seen, not the exact moment it changed.
+    (SELECT COALESCE(json_agg(json_build_object(
+        'level', level, 'cycle', cycle, 'id', replay_id::text,
+        'day', to_char(day, 'YYYY-MM-DD'),
+        'at', CASE WHEN live THEN fetched_at END,
+        'replays', replays_since) ORDER BY cycle, replay_id), '[]')
+      FROM (SELECT x.*, n - lag(n, 1, 1::bigint) OVER (ORDER BY cycle, replay_id) AS replays_since
+            FROM (SELECT d.*, row_number() OVER w AS n,
+                         max(level) OVER (w ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS prev_max
+                  FROM dated d WINDOW w AS (ORDER BY cycle, replay_id)) x
+            WHERE prev_max IS NOT NULL AND level > prev_max) y) AS level_ups,
+
+    -- Replays per UTC hour, live-collected replays only; the page turns these
+    -- into the viewer's own days and hours.
+    (SELECT COALESCE(json_agg(json_build_object('t', t, 'games', games) ORDER BY t), '[]')
+      FROM (SELECT to_char(date_trunc('hour', fetched_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD"T"HH24":00:00Z"') AS t,
+                   count(*) AS games
+            FROM dated WHERE live AND fetched_at IS NOT NULL GROUP BY 1) t) AS live_hours,
+
+    -- Sessions: live replays less than 30 minutes apart (by when they were
+    -- collected, which trails play by a few minutes).
+    (SELECT json_build_object(
+        'count', count(*),
+        'median_minutes', round(percentile_cont(0.5) WITHIN GROUP (ORDER BY minutes)::numeric, 0),
+        'longest_minutes', round(max(minutes)::numeric, 0))
+      FROM (SELECT sid, extract(epoch FROM max(fetched_at) - min(fetched_at)) / 60 AS minutes
+            FROM (SELECT fetched_at,
+                         sum(new_session) OVER (ORDER BY fetched_at) AS sid
+                  FROM (SELECT fetched_at,
+                               CASE WHEN fetched_at - lag(fetched_at) OVER (ORDER BY fetched_at)
+                                         <= interval '30 minutes' THEN 0 ELSE 1 END AS new_session
+                        FROM dated WHERE live AND fetched_at IS NOT NULL) a) b
+            GROUP BY sid) c) AS sessions,
 
     -- Registered players seen in the same replays most often, and how many
     -- of those games were on the same team (team modes; red = 2 and up).
@@ -120,7 +179,44 @@ const PROFILE_SQL = `
             FROM others
             WHERE teams AND my_team >= 2 AND team = my_team
             GROUP BY lower(username)
-            ORDER BY 2 DESC, 1 LIMIT ${TOP_N}) t) AS teammates
+            ORDER BY 2 DESC, 1 LIMIT ${TOP_N}) t) AS teammates,
+
+    -- Opponents: the other team in team games, or the other player in a 1v1.
+    (SELECT COALESCE(json_agg(json_build_object(
+        'username', username, 'games', games) ORDER BY games DESC, username), '[]')
+      FROM (SELECT (array_agg(username ORDER BY cycle DESC, replay_id DESC))[1] AS username,
+                   count(DISTINCT (cycle, replay_id)) AS games
+            FROM others
+            WHERE (teams AND my_team >= 2 AND team >= 2 AND team <> my_team) OR room = '1v1'
+            GROUP BY lower(username)
+            ORDER BY 2 DESC, 1 LIMIT ${TOP_N}) t) AS rivals
+`;
+
+// One map, from one player's side: how they play it and who with.
+const PLAYER_MAP_SQL = `
+  WITH ${PLAYER_CTE}
+  SELECT
+    (SELECT json_build_object(
+        'games', count(*),
+        'first_day', to_char(min(day), 'YYYY-MM-DD'),
+        'last_day', to_char(max(day), 'YYYY-MM-DD'),
+        'rooms', json_build_object(
+          '1v1', count(*) FILTER (WHERE room = '1v1'),
+          'ffa', count(*) FILTER (WHERE room = 'ffa'),
+          'teams', count(*) FILTER (WHERE room = 'teams')),
+        'modes', (SELECT COALESCE(json_object_agg(COALESCE(mode, '?'), n), '{}')
+                  FROM (SELECT mode, count(*) AS n FROM dated WHERE mapid = $2 GROUP BY mode) mm)
+      ) FROM dated WHERE mapid = $2) AS summary,
+    (SELECT name FROM maps WHERE mapid = $2 ORDER BY version DESC LIMIT 1) AS name,
+    (SELECT COALESCE(json_agg(json_build_object(
+        'username', username, 'games', games, 'same_team', same_team) ORDER BY games DESC, username), '[]')
+      FROM (SELECT (array_agg(username ORDER BY cycle DESC, replay_id DESC))[1] AS username,
+                   count(DISTINCT (cycle, replay_id)) AS games,
+                   count(DISTINCT (cycle, replay_id))
+                     FILTER (WHERE teams AND my_team >= 2 AND team = my_team) AS same_team
+            FROM others WHERE mapid = $2
+            GROUP BY lower(username)
+            ORDER BY 2 DESC, 1 LIMIT 5) t) AS played_with
 `;
 
 export function validPlayerName(raw) {
@@ -174,12 +270,41 @@ export function registerPlayerRoutes(app, pool, { enrichKeys, sendDbError }) {
         maps: row.maps,
         played_with: row.played_with,
         teammates: row.teammates,
+        rivals: row.rivals,
+        rooms: row.rooms,
+        level_ups: row.level_ups,
+        live_hours: row.live_hours,
+        sessions: row.sessions,
         recent,
         generated_at: new Date().toISOString(),
       });
     } catch (err) {
       console.error("GET /api/player/:name failed:", err);
       return sendDbError(res, err, "We couldn't load that player. Please try again.");
+    }
+  });
+
+  // ─── One map from a player's side ───────────────────────────────────────
+  //
+  // GET /api/player/:name/map/:mapid → games, first/last day, room and mode
+  // split, and the registered players they play it with most.
+  app.get("/api/player/:name/map/:mapid", async (req, res) => {
+    const name = validPlayerName(req.params.name);
+    const mapid = String(req.params.mapid ?? "");
+    if (!name || !/^\d{1,18}$/.test(mapid)) {
+      return res.status(400).json({ error: "That isn't a valid player or map." });
+    }
+    try {
+      const result = await pool.query(PLAYER_MAP_SQL, [name, mapid]);
+      const row = result.rows[0];
+      res.setHeader("Cache-Control", "public, max-age=300");
+      if (!row?.summary?.games) {
+        return res.status(404).json({ error: "This player has no replays on that map." });
+      }
+      return res.json({ mapid, name: row.name, ...row.summary, played_with: row.played_with });
+    } catch (err) {
+      console.error("GET /api/player/:name/map/:mapid failed:", err);
+      return sendDbError(res, err, "We couldn't load that map for this player.");
     }
   });
 
