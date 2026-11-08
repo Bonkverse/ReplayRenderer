@@ -16,7 +16,7 @@
     />
 
     <!-- Installable / app-like on phones (Add to Home Screen) -->
-    <meta name="theme-color" content="#0f172a" />
+    <meta name="theme-color" content="#141f2b" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -25,7 +25,15 @@
     <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
 
-    <!-- Bonk Fonts -->
+    <!-- Display face shared with the main Bonkverse site -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Oxanium:wght@600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Bonk Fonts (used by the game canvas: player names, scores) -->
     <style>
       @font-face {
         font-family: "Bonk";
@@ -70,9 +78,9 @@
       body {
         margin: 0;
         min-height: 100%;
-        background: #0f172a;
-        color: white;
-        font-family: "Bonk", "fptmed", sans-serif;
+        background: #141f2b;
+        color: #edf4fb;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         overflow-y: auto;
         overflow-x: hidden;
         -webkit-text-size-adjust: 100%;
