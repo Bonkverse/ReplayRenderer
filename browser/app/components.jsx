@@ -360,19 +360,131 @@ export function CardSkeleton({ count = 6 }) {
   );
 }
 
-export function Pagination({ page, totalPages, onPage, busy }) {
+/**
+ * Page numbers to show: always the first and last, the current page and
+ * `siblings` on each side, with "…" for the gaps.
+ *   pageItems(6, 75, 1) → [1, "…", 5, 6, 7, "…", 75]
+ */
+export function pageItems(page, total, siblings = 1) {
+  const span = siblings * 2 + 1; // pages shown around the current one
+  // Few enough pages to show them all
+  if (total <= span + 4) return Array.from({ length: total }, (_, i) => i + 1);
+
+  // Keep the same number of slots wherever you are, so buttons don't jump
+  let from = page - siblings;
+  let to = page + siblings;
+  if (page <= siblings + 3) {
+    from = 2;
+    to = span + 2;
+  } else if (page >= total - siblings - 2) {
+    from = total - span - 1;
+    to = total - 1;
+  }
+
+  const items = [1];
+  if (from > 2) items.push("…");
+  for (let p = from; p <= to; p++) items.push(p);
+  if (to < total - 1) items.push("…");
+  items.push(total);
+  return items;
+}
+
+/** "Go to page" box. Keeps its own draft so typing doesn't navigate. */
+export function PageJump({ page, totalPages, onPage, busy, compact = false }) {
+  const [draft, setDraft] = useState(String(page));
+  useEffect(() => setDraft(String(page)), [page]);
+
+  function submit(e) {
+    e.preventDefault();
+    const n = parseInt(draft, 10);
+    if (!Number.isFinite(n)) return setDraft(String(page));
+    const target = Math.min(Math.max(1, n), totalPages);
+    setDraft(String(target));
+    if (target !== page) onPage(target);
+  }
+
+  return (
+    <form className={`page-jump${compact ? " page-jump--compact" : ""}`} onSubmit={submit}>
+      <label>
+        <span>{compact ? "Page" : "Go to page"}</span>
+        <input
+          type="number"
+          inputMode="numeric"
+          min={1}
+          max={totalPages}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => !compact && setDraft(String(page))}
+          aria-label={`Page number, 1 to ${totalPages}`}
+          disabled={busy}
+        />
+      </label>
+      {compact ? (
+        <span className="page-jump__of">of {totalPages.toLocaleString()}</span>
+      ) : (
+        <button className="btn" type="submit" disabled={busy}>
+          Go
+        </button>
+      )}
+    </form>
+  );
+}
+
+/**
+ * Full pager: previous / numbered pages with gaps / next, plus a jump box.
+ * `capped` means the count stopped at the API's limit, so the last page
+ * number is a floor ("500+").
+ */
+export function Pagination({ page, totalPages, onPage, busy, capped = false }) {
   if (totalPages <= 1) return null;
+  const items = pageItems(page, totalPages, 1);
+
   return (
     <nav className="pagination" aria-label="Pages">
-      <button className="btn" onClick={() => onPage(page - 1)} disabled={page <= 1 || busy}>
-        ‹ Previous
-      </button>
-      <span className="pagination__label">
-        Page {page} of {totalPages.toLocaleString()}
-      </span>
-      <button className="btn" onClick={() => onPage(page + 1)} disabled={page >= totalPages || busy}>
-        Next ›
-      </button>
+      <div className="pager">
+        <button
+          className="pager__btn pager__step"
+          onClick={() => onPage(page - 1)}
+          disabled={page <= 1 || busy}
+          aria-label="Previous page"
+        >
+          ‹<span className="pager__step-text"> Previous</span>
+        </button>
+
+        <ol className="pager__pages">
+          {items.map((it, i) =>
+            it === "…" ? (
+              <li key={`gap-${i}`} className="pager__gap" aria-hidden="true">
+                …
+              </li>
+            ) : (
+              <li key={it}>
+                <button
+                  className={`pager__btn${it === page ? " is-current" : ""}`}
+                  onClick={() => it !== page && onPage(it)}
+                  aria-current={it === page ? "page" : undefined}
+                  aria-label={`Page ${it}${it === page ? ", current page" : ""}`}
+                  disabled={busy && it !== page}
+                >
+                  {it.toLocaleString()}
+                  {capped && it === totalPages ? "+" : ""}
+                </button>
+              </li>
+            )
+          )}
+        </ol>
+
+        <button
+          className="pager__btn pager__step"
+          onClick={() => onPage(page + 1)}
+          disabled={page >= totalPages || busy}
+          aria-label="Next page"
+        >
+          <span className="pager__step-text">Next </span>›
+        </button>
+      </div>
+
+      <PageJump page={page} totalPages={totalPages} onPage={onPage} busy={busy} />
     </nav>
   );
 }

@@ -5,6 +5,35 @@
  * Spacing steps: 4 / 8 / 12 / 16 / 24 / 32. Controls 6–10px radius, panels 12px.
  */
 
+/* Futura PT, bonk.io's own typeface (the same files the game canvas uses,
+   also used by the About replay dates page). One family with real weights:
+   400 Book for text, 500 Medium for headings, labels and buttons (like the
+   dates page), 700 Bold only where something must stand out. */
+@font-face {
+  font-family: "Futura PT";
+  src: url("/vendor/fonts/fptl.otf") format("opentype");
+  font-weight: 300;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Futura PT";
+  src: url("/vendor/fonts/fptbook.otf") format("opentype");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Futura PT";
+  src: url("/vendor/fonts/fptmed.otf") format("opentype");
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Futura PT";
+  src: url("/vendor/fonts/fptb.otf") format("opentype");
+  font-weight: 700;
+  font-display: swap;
+}
+
 :root {
   --canvas: #141f2b;
   --panel: #1c2d40;
@@ -19,8 +48,8 @@
   --link: #90b7ff;
   --danger: #ff8a80;
 
-  --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --font-display: "Oxanium", var(--font-ui);
+  --font-ui: "Futura PT", system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-display: var(--font-ui);
   --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
 
   --radius-control: 8px;
@@ -38,7 +67,8 @@ body {
     var(--canvas);
   color: var(--text);
   font-family: var(--font-ui);
-  line-height: 1.45;
+  font-size: 16px;
+  line-height: 1.5;
 }
 
 button,
@@ -50,6 +80,12 @@ select {
 
 a {
   color: inherit;
+}
+
+h1,
+h2,
+h3 {
+  font-weight: 500;
 }
 
 :focus-visible {
@@ -76,7 +112,7 @@ a {
   background: var(--action);
   color: var(--action-ink);
   border-radius: var(--radius-control);
-  font-weight: 700;
+  font-weight: 500;
   text-decoration: none;
 }
 
@@ -99,7 +135,7 @@ a {
 .link {
   color: var(--link);
   text-decoration: none;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .link:hover {
@@ -111,7 +147,7 @@ a {
   border: 0;
   padding: 0;
   color: var(--link);
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
 }
 
@@ -134,7 +170,7 @@ a {
   border: 1px solid var(--outline);
   background: var(--panel);
   color: var(--text);
-  font-weight: 600;
+  font-weight: 500;
   font-size: 14px;
   cursor: pointer;
   white-space: nowrap;
@@ -201,7 +237,7 @@ a {
   border: 1px solid var(--outline);
   background: var(--panel);
   color: var(--text);
-  font-weight: 600;
+  font-weight: 500;
   font-size: 14px;
   cursor: pointer;
   white-space: nowrap;
@@ -229,7 +265,7 @@ a {
   border: 1px solid var(--outline);
   color: var(--muted);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 0.02em;
   vertical-align: 1px;
 }
@@ -270,7 +306,7 @@ a {
 
 .brand__name {
   font-family: var(--font-display);
-  font-weight: 700;
+  font-weight: 500;
   font-size: 19px;
   letter-spacing: 0.01em;
 }
@@ -285,7 +321,7 @@ a {
   border-radius: var(--radius-control);
   text-decoration: none;
   color: var(--muted);
-  font-weight: 600;
+  font-weight: 500;
   font-size: 15px;
 }
 
@@ -432,7 +468,7 @@ a {
   align-items: center;
   gap: 6px;
   color: var(--action);
-  font-weight: 600;
+  font-weight: 500;
   font-size: 14px;
 }
 
@@ -440,7 +476,7 @@ a {
   background: transparent;
   border: 0;
   color: var(--action);
-  font-weight: 700;
+  font-weight: 500;
   padding: 6px 2px;
 }
 
@@ -497,7 +533,7 @@ a {
 .card__title {
   margin: 0;
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -584,7 +620,7 @@ a {
   border-radius: var(--radius-control);
   border: 1px solid var(--outline);
   background: var(--panel);
-  font-weight: 600;
+  font-weight: 500;
   font-size: 14px;
 }
 
@@ -633,7 +669,7 @@ a.row__link:hover .row__map {
 .row__title {
   margin: 0;
   font-size: 18px;
-  font-weight: 700;
+  font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -641,7 +677,7 @@ a.row__link:hover .row__map {
 
 .row__id {
   color: var(--muted);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .row__players {
@@ -655,7 +691,7 @@ a.row__link:hover .row__map {
 
 .row__players .is-match {
   color: var(--action);
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .row__meta {
@@ -668,13 +704,134 @@ a.row__link:hover .row__map {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-top: 20px;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  margin-top: 24px;
+  padding-top: 20px;
 }
 
-.pagination__label {
+.pager {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pager__pages {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pager__btn {
+  min-width: 40px;
+  height: 40px;
+  padding: 0 10px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--outline);
+  background: var(--panel);
+  color: var(--text);
+  font-weight: 500;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.pager__btn:hover:not(:disabled):not(.is-current) {
+  border-color: var(--action);
+  color: var(--action);
+}
+
+.pager__btn.is-current {
+  background: var(--action);
+  border-color: var(--action);
+  color: var(--action-ink);
+  cursor: default;
+}
+
+.pager__btn:disabled:not(.is-current) {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.pager__step {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.pager__step-text {
+  font-size: 15px;
+}
+
+.pager__gap {
+  min-width: 20px;
+  text-align: center;
   color: var(--muted);
-  font-size: 14px;
+}
+
+.page-jump {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.page-jump label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.page-jump input {
+  width: 72px;
+  height: 40px;
+  padding: 0 10px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--outline);
+  background: var(--inset);
+  color: var(--text);
+  font-size: 16px; /* no iOS zoom */
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  -moz-appearance: textfield;
+}
+
+.page-jump input::-webkit-outer-spin-button,
+.page-jump input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.page-jump input:focus {
+  border-color: var(--link);
+  outline: none;
+}
+
+.page-jump__of {
+  color: var(--muted);
+  font-size: 15px;
+  white-space: nowrap;
+}
+
+/* Compact pager at the top of the results */
+.results__tools {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.results__pager {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.page-jump--compact input {
+  width: 64px;
 }
 
 /* ─── Filter panel / sheet ────────────────────────────────────────────────── */
@@ -732,7 +889,7 @@ a.row__link:hover .row__map {
   margin: 12px 0 8px;
   color: var(--muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -746,7 +903,7 @@ a.row__link:hover .row__map {
 
 .field__label {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--muted);
 }
 
@@ -795,7 +952,7 @@ a.row__link:hover .row__map {
   border: 1px solid var(--action);
   background: var(--action-tint);
   color: var(--action);
-  font-weight: 600;
+  font-weight: 500;
   font-size: 14px;
 }
 
@@ -831,7 +988,7 @@ a.row__link:hover .row__map {
   border-radius: var(--radius-control);
   border: 1px solid var(--outline);
   background: var(--inset);
-  font-weight: 600;
+  font-weight: 500;
   font-size: 13px;
   cursor: pointer;
 }
@@ -850,7 +1007,7 @@ a.row__link:hover .row__map {
   min-height: 36px;
   margin-bottom: 8px;
   color: var(--link);
-  font-weight: 600;
+  font-weight: 500;
   text-decoration: none;
 }
 
@@ -929,7 +1086,7 @@ a.row__link:hover .row__map {
 
 .watch__id {
   color: var(--muted);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .watch__sub {
@@ -987,7 +1144,7 @@ a.row__link:hover .row__map {
 .score-line__score,
 .team__score {
   font-size: 20px;
-  font-weight: 700;
+  font-weight: 500;
   min-width: 2ch;
   text-align: right;
 }
@@ -1005,7 +1162,7 @@ a.row__link:hover .row__map {
 }
 
 .score-row__name {
-  font-weight: 700;
+  font-weight: 500;
   text-decoration: none;
   overflow-wrap: anywhere;
 }
@@ -1040,7 +1197,7 @@ a.row__link:hover .row__map {
 
 .team__name {
   flex: 1;
-  font-weight: 700;
+  font-weight: 500;
   font-size: 14px;
 }
 
@@ -1051,7 +1208,7 @@ a.row__link:hover .row__map {
   place-items: center;
   overflow: hidden;
   color: #0f172a;
-  font-weight: 700;
+  font-weight: 500;
   font-size: 12px;
 }
 
@@ -1073,7 +1230,7 @@ a.row__link:hover .row__map {
   border: 0;
   border-bottom: 2px solid transparent;
   color: var(--muted);
-  font-weight: 700;
+  font-weight: 500;
   font-size: 14px;
   cursor: pointer;
 }
@@ -1129,7 +1286,7 @@ a.row__link:hover .row__map {
 .slots th {
   color: var(--muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -1189,7 +1346,7 @@ a.row__link:hover .row__map {
   border-radius: 6px;
   background: transparent;
   text-align: left;
-  font-weight: 600;
+  font-weight: 500;
   font-size: 14px;
   cursor: pointer;
 }
@@ -1234,7 +1391,7 @@ a.row__link:hover .row__map {
   border-radius: 10px;
   background: var(--text);
   color: var(--canvas);
-  font-weight: 700;
+  font-weight: 500;
   font-size: 14px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
@@ -1364,7 +1521,7 @@ a.row__link:hover .row__map {
 
 .icon-btn--text {
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1391,7 +1548,7 @@ a.row__link:hover .row__map {
 .time-label {
   color: white;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -1639,8 +1796,37 @@ body.no-scroll {
     grid-template-columns: 1fr;
   }
 
-  .pagination .btn {
-    flex: 1;
+  .pagination {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .pager {
+    justify-content: space-between;
+  }
+
+  .pager__pages {
+    gap: 4px;
+  }
+
+  .pager__btn {
+    min-width: 36px;
+    height: 40px;
+    padding: 0 6px;
+    font-size: 14px;
+  }
+
+  .pager__step-text {
+    display: none;
+  }
+
+  .page-jump {
+    justify-content: center;
+  }
+
+  .results__tools {
+    width: 100%;
+    justify-content: space-between;
   }
 
   .watch__title {

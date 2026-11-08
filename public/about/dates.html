@@ -18,13 +18,15 @@
         src: url("/vendor/fonts/fptbook.otf") format("opentype");
       }
 
+      /* Same palette as the replay site (browser/dev.css) */
       :root {
-        --bg: #0f172a;
-        --panel: #172033;
-        --border: #334155;
-        --text: #ffffff;
-        --muted: #94a3b8;
-        --teal: #14b8a6;
+        --bg: #141f2b;
+        --panel: #1c2d40;
+        --border: #354a5f;
+        --text: #edf4fb;
+        --muted: #aec1d3;
+        --teal: #47d8c4;
+        --link: #90b7ff;
       }
 
       * {
@@ -34,7 +36,8 @@
       html,
       body {
         margin: 0;
-        background: var(--bg);
+        background: radial-gradient(1200px 600px at 10% -10%, #1a3448 0%, var(--bg) 55%) fixed,
+          var(--bg);
         color: var(--text);
         font-family: "fptbook", "fptmed", system-ui, sans-serif;
         line-height: 1.6;
@@ -47,8 +50,73 @@
       }
 
       a {
-        color: var(--teal);
+        color: var(--link);
         text-decoration: none;
+      }
+
+      /* Shared Bonkverse header, matching the replay site */
+      .site-header {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: rgba(28, 45, 64, 0.94);
+        backdrop-filter: blur(10px);
+        border-bottom: 1px solid var(--border);
+        padding-top: env(safe-area-inset-top);
+      }
+      .site-header__inner {
+        max-width: 1280px;
+        margin: 0 auto;
+        height: 60px;
+        padding: 0 24px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--text);
+        font-family: "fptmed", sans-serif;
+        font-size: 19px;
+      }
+      .brand:hover,
+      .site-nav a:hover {
+        text-decoration: none;
+      }
+      .brand img {
+        width: 32px;
+        height: 32px;
+      }
+      .site-nav {
+        display: flex;
+        gap: 4px;
+      }
+      .site-nav a {
+        padding: 8px 14px;
+        border-radius: 8px;
+        color: var(--muted);
+        font-family: "fptmed", sans-serif;
+        font-size: 15px;
+      }
+      .site-nav a.is-active {
+        color: var(--teal);
+        background: rgba(71, 216, 196, 0.14);
+      }
+      @media (max-width: 640px) {
+        .site-header__inner {
+          height: 56px;
+          padding: 0 16px;
+        }
+        .site-nav a {
+          padding: 8px 10px;
+          font-size: 14px;
+        }
+        .site-nav__community {
+          display: none;
+        }
       }
 
       a:hover {
@@ -144,14 +212,28 @@
       .callout {
         margin: 16px 0;
         padding: 14px 16px;
-        border: 1px solid rgba(20, 184, 166, 0.4);
+        border: 1px solid rgba(71, 216, 196, 0.4);
         border-radius: 12px;
-        background: rgba(20, 184, 166, 0.08);
+        background: rgba(71, 216, 196, 0.08);
       }
     </style>
   </head>
 
   <body>
+    <header class="site-header">
+      <div class="site-header__inner">
+        <a class="brand" href="https://bonkverse.io/">
+          <img src="/brand/planet.png" alt="" width="32" height="32" />
+          <span>Bonkverse</span>
+        </a>
+        <nav class="site-nav" aria-label="Bonkverse">
+          <a href="https://bonkverse.io/search/">Skins</a>
+          <a href="/" class="is-active">Replays</a>
+          <a class="site-nav__community" href="https://bonkverse.io/players_search/players/">Community</a>
+        </nav>
+      </div>
+    </header>
+
     <main class="wrap">
       <a class="back" href="/">← Back to replays</a>
 

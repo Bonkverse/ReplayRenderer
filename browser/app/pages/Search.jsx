@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { getJson } from "../api.js";
 import { navigate, searchFromParams, searchToQuery, searchUrl, SEARCH_DEFAULTS } from "../router.js";
-import { SearchBox, ReplayRow, RowSkeleton, Pagination, scopeLabel } from "../components.jsx";
+import { SearchBox, ReplayRow, RowSkeleton, Pagination, PageJump, scopeLabel } from "../components.jsx";
 import { MODE_LABELS, modeLabel, ABOUT_DATES_URL } from "../format.js";
 
 const GUEST_OPTIONS = [
@@ -348,6 +348,33 @@ export default function Search({ route }) {
                 )}
               </p>
             </div>
+            <div className="results__tools">
+            {!loading && data?.totalPages > 1 && (
+              <div className="results__pager">
+                <button
+                  className="pager__btn pager__step"
+                  onClick={() => go({ ...search, page: data.page - 1 })}
+                  disabled={data.page <= 1}
+                  aria-label="Previous page"
+                >
+                  ‹
+                </button>
+                <PageJump
+                  compact
+                  page={data.page}
+                  totalPages={data.totalPages}
+                  onPage={(p) => go({ ...search, page: p })}
+                />
+                <button
+                  className="pager__btn pager__step"
+                  onClick={() => go({ ...search, page: data.page + 1 })}
+                  disabled={data.page >= data.totalPages}
+                  aria-label="Next page"
+                >
+                  ›
+                </button>
+              </div>
+            )}
             <label className="sort">
               <span className="visually-hidden">Sort</span>
               <select value={search.sort} onChange={(e) => go({ ...search, sort: e.target.value, page: 1 })}>
@@ -355,6 +382,7 @@ export default function Search({ route }) {
                 <option value="oldest">Oldest first</option>
               </select>
             </label>
+            </div>
           </div>
 
           {chips.length > 0 && (
@@ -414,6 +442,7 @@ export default function Search({ route }) {
               <Pagination
                 page={data.page}
                 totalPages={data.totalPages}
+                capped={data.capped}
                 busy={loading}
                 onPage={(p) => go({ ...search, page: p })}
               />
