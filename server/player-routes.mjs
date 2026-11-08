@@ -103,14 +103,15 @@ const PROFILE_SQL = `
 
     (SELECT COALESCE(json_agg(json_build_object(
         'mapid', mapid::text, 'name', name, 'games', games, 'last_day', to_char(last_day, 'YYYY-MM-DD'),
-        'rooms', json_build_object('1v1', one_v_one, 'ffa', ffa, 'teams', teams_n)) ORDER BY games DESC, mapid), '[]')
+        'rooms', json_build_object('1v1', one_v_one, 'ffa', ffa, 'teams', teams_n, 'solo', solo)) ORDER BY games DESC, mapid), '[]')
       FROM (
         SELECT t.*,
                (SELECT name FROM maps mp WHERE mp.mapid = t.mapid ORDER BY version DESC LIMIT 1) AS name
         FROM (SELECT mapid, count(*) AS games, max(day) AS last_day,
                      count(*) FILTER (WHERE room = '1v1') AS one_v_one,
                      count(*) FILTER (WHERE room = 'ffa') AS ffa,
-                     count(*) FILTER (WHERE room = 'teams') AS teams_n
+                     count(*) FILTER (WHERE room = 'teams') AS teams_n,
+                     count(*) FILTER (WHERE room = 'solo') AS solo
               FROM dated WHERE mapid IS NOT NULL
               GROUP BY mapid ORDER BY count(*) DESC, mapid LIMIT ${MAPS_N}) t
       ) t2) AS maps,
@@ -203,7 +204,8 @@ const PLAYER_MAP_SQL = `
         'rooms', json_build_object(
           '1v1', count(*) FILTER (WHERE room = '1v1'),
           'ffa', count(*) FILTER (WHERE room = 'ffa'),
-          'teams', count(*) FILTER (WHERE room = 'teams')),
+          'teams', count(*) FILTER (WHERE room = 'teams'),
+          'solo', count(*) FILTER (WHERE room = 'solo')),
         'modes', (SELECT COALESCE(json_object_agg(COALESCE(mode, '?'), n), '{}')
                   FROM (SELECT mode, count(*) AS n FROM dated WHERE mapid = $2 GROUP BY mode) mm)
       ) FROM dated WHERE mapid = $2) AS summary,
