@@ -66,8 +66,8 @@ separate). Guests never get a profile: their names aren't unique.
   `rooms` (1v1 / free-for-all / teams / solo, quick play, typical room size,
   maps played), `modes`, top 20 `maps` (with last day and room split),
   `played_with`, `teammates` and `rivals` (registered players only), and the
-  six most `recent` replays, and their latest `skin` (see below). Hours and
-  sessions only use live-collected replays. 404 when the name has no
+  six most `recent` replays. Hours and sessions only use live-collected
+  replays. 404 when the name has no
   registered replays. Cached for 5 minutes.
 - `GET /api/player/:name/map/:mapid` → that player on one map: games, first
   and last day, room and mode split, and who they play it with.
@@ -79,18 +79,16 @@ separate). Guests never get a profile: their names aren't unique.
   names: games, level in their latest replay, peak level, that replay
   (`last: {cycle, id}`), and when it was seen (`seen_at` exact for
   live-collected replays, else null; `seen_day` always; `seen_estimated`
-  when the day comes from cycle estimates), and their latest `skin`. Names
-  with no replays are left out. Used by Bonkverse's player search cards and
+  when the day comes from cycle estimates). Names with no replays are left
+  out. Used by Bonkverse's player search cards and
   its public API.
 - `GET /api/players?q=abc` → up to 10 registered names starting with `q`
   (3+ characters), most-played first.
 
-`skin` is the skin in the player's newest replay that recorded one
-(`server/skins.mjs`, from ReplayFetcher's `avatars` table and
-`replay_participants.avatar_hash`), or `null`:
-`{ hash, avatar: { layers, bc }, seen_at, seen_day, seen_estimated, replay: { cycle, id } }`.
-`avatar` is the form `public/skin-render.js` draws; `seen_*` mean the same as
-in the lookup. Guests' skins are never returned.
+**No skins in these public routes.** A stored avatar (`{ layers, bc }`) is
+the skin itself, enough to wear or edit an exact copy, and these routes are
+open to anyone. Skins only leave through the private sync below; Bonkverse
+publishes images of them, never the skin data.
 
 The private `GET /api/internal/replay-names` (Bonkverse's sync, token
 required) also gives each name its latest `skin` hash in the batch and

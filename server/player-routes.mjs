@@ -8,6 +8,11 @@
 // Only registered players get a profile. Registered usernames are unique and
 // permanent; guest names are not, so a guest "profile" would mix strangers.
 //
+// No skins here: these routes are open to anyone, and a stored avatar
+// ({layers, bc}) is the skin itself, enough to wear or edit an exact copy.
+// Bonkverse gets skins through the token-protected replay-names sync
+// (sync-routes.mjs) and publishes images of them, never the skin data.
+//
 // What a replay can and can't tell us: each stored replay is the end of one
 // round, with every player's account level at that moment, their team and
 // the mode and map. It can't say who won, so there is no win rate here.
@@ -16,8 +21,6 @@
 // collected after the fact (cycle 5, the cycle 6 backlog) only have an
 // estimated upload day from replay_cycle_days, so hours of the day come from
 // live-collected replays only, and the response says how many that was.
-
-import { latestSkins } from "./skins.mjs";
 
 const MAX_NAME_LENGTH = 100;
 const TOP_N = 10;
@@ -301,7 +304,7 @@ export function registerPlayerRoutes(app, pool, { enrichKeys, sendDbError }) {
     if (!name) return res.status(400).json({ error: "That isn't a valid username." });
 
     try {
-      const [profile, recent, skins] = await Promise.all([
+      const [profile, recent] = await Promise.all([
         pool.query(PROFILE_SQL, [name]),
         enrichKeys(
           pool,
@@ -313,7 +316,6 @@ export function registerPlayerRoutes(app, pool, { enrichKeys, sendDbError }) {
            LIMIT ${RECENT_N}`,
           [name]
         ),
-        latestSkins(pool, [name]),
       ]);
 
       const row = profile.rows[0];
@@ -342,7 +344,6 @@ export function registerPlayerRoutes(app, pool, { enrichKeys, sendDbError }) {
         live_hours: row.live_hours,
         sessions: row.sessions,
         recent,
-        skin: skins.get(name.toLowerCase()) ?? null,
         generated_at: new Date().toISOString(),
       });
     } catch (err) {
@@ -388,7 +389,7 @@ export function registerPlayerRoutes(app, pool, { enrichKeys, sendDbError }) {
   // seen: seen_at is the exact collection time for live-collected replays
   // (null otherwise); seen_day is always set, and seen_estimated says it
   // came from replay_cycle_days (cycle 5, the cycle 6 backlog) rather than
-  // a live fetch. `skin` is their latest skin (skins.mjs), or null.
+  // a live fetch.
   app.get("/api/players/lookup", async (req, res) => {
     const raw = req.query.names;
     const names = [...new Set((Array.isArray(raw) ? raw : raw == null ? [] : [raw])
@@ -426,10 +427,8 @@ export function registerPlayerRoutes(app, pool, { enrichKeys, sendDbError }) {
            ON rcd.cycle = l.cycle AND l.replay_id BETWEEN rcd.first_id AND rcd.last_id`,
         [names]
       );
-      const skins = await latestSkins(pool, result.rows.map((r) => r.username));
-      const results = result.rows.map((r) => ({ ...r, skin: skins.get(r.username.toLowerCase()) ?? null }));
       res.setHeader("Cache-Control", "public, max-age=300");
-      return res.json({ results });
+      return res.json({ results: result.rows });
     } catch (err) {
       console.error("GET /api/players/lookup failed:", err);
       return sendDbError(res, err, "We couldn't look up those players right now.");
