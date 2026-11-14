@@ -17,6 +17,8 @@
 // estimated upload day from replay_cycle_days, so hours of the day come from
 // live-collected replays only, and the response says how many that was.
 
+import { latestSkins } from "./skins.mjs";
+
 const MAX_NAME_LENGTH = 100;
 const TOP_N = 10;
 const RECENT_N = 6;
@@ -299,7 +301,7 @@ export function registerPlayerRoutes(app, pool, { enrichKeys, sendDbError }) {
     if (!name) return res.status(400).json({ error: "That isn't a valid username." });
 
     try {
-      const [profile, recent] = await Promise.all([
+      const [profile, recent, skins] = await Promise.all([
         pool.query(PROFILE_SQL, [name]),
         enrichKeys(
           pool,
@@ -311,6 +313,7 @@ export function registerPlayerRoutes(app, pool, { enrichKeys, sendDbError }) {
            LIMIT ${RECENT_N}`,
           [name]
         ),
+        latestSkins(pool, [name]),
       ]);
 
       const row = profile.rows[0];
@@ -339,6 +342,7 @@ export function registerPlayerRoutes(app, pool, { enrichKeys, sendDbError }) {
         live_hours: row.live_hours,
         sessions: row.sessions,
         recent,
+        skin: skins.get(name.toLowerCase()) ?? null,
         generated_at: new Date().toISOString(),
       });
     } catch (err) {
@@ -384,7 +388,7 @@ export function registerPlayerRoutes(app, pool, { enrichKeys, sendDbError }) {
   // seen: seen_at is the exact collection time for live-collected replays
   // (null otherwise); seen_day is always set, and seen_estimated says it
   // came from replay_cycle_days (cycle 5, the cycle 6 backlog) rather than
-  // a live fetch.
+  // a live fetch. `skin` is their latest skin (skins.mjs), or null.
   app.get("/api/players/lookup", async (req, res) => {
     const raw = req.query.names;
     const names = [...new Set((Array.isArray(raw) ? raw : raw == null ? [] : [raw])
@@ -422,8 +426,10 @@ export function registerPlayerRoutes(app, pool, { enrichKeys, sendDbError }) {
            ON rcd.cycle = l.cycle AND l.replay_id BETWEEN rcd.first_id AND rcd.last_id`,
         [names]
       );
+      const skins = await latestSkins(pool, result.rows.map((r) => r.username));
+      const results = result.rows.map((r) => ({ ...r, skin: skins.get(r.username.toLowerCase()) ?? null }));
       res.setHeader("Cache-Control", "public, max-age=300");
-      return res.json({ results: result.rows });
+      return res.json({ results });
     } catch (err) {
       console.error("GET /api/players/lookup failed:", err);
       return sendDbError(res, err, "We couldn't look up those players right now.");

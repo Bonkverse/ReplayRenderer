@@ -69,12 +69,26 @@ describe("parsing", () => {
 
 const DB = process.env.TEST_DATABASE_URL;
 
+// Skins (ReplayFetcher's avatars table) and who wore which, by "cycle:id:name".
+const SKINS = {
+  aaaa: { layers: [{ id: 13, scale: 0.2, angle: 0, x: 0, y: 0, flipX: false, flipY: false, color: 255 }], bc: 1 },
+  bbbb: { layers: [], bc: 2 },
+  gggg: { layers: [], bc: 3 },
+};
+const SKIN_OF = {
+  "6:1:Alpha": "aaaa",
+  "6:2:Alpha": "bbbb", // Alpha's newest replay
+  "5:5:Alpha": "aaaa",
+  "6:2:guesty": "gggg", // a guest's skin is nobody's
+  "6:3:Beta": "aaaa", // Beta's replay 1 has no skin recorded
+};
+
 describe("searching", { skip: !DB && "set TEST_DATABASE_URL to run" }, () => {
   let pool, server, base;
 
   before(async () => {
     pool = new pg.Pool({ connectionString: DB });
-    await pool.query(`TRUNCATE replays, maps, replay_cycle_days CASCADE`);
+    await pool.query(`TRUNCATE replays, maps, replay_cycle_days, avatars CASCADE`);
     await pool.query(`CREATE TABLE IF NOT EXISTS player_ids (dbid BIGINT PRIMARY KEY, username TEXT NOT NULL, joined DATE, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
     await pool.query(`TRUNCATE player_ids`);
     // From bonkverse.io: Alpha and _x_ have known DBIDs; Beta doesn't.
@@ -95,10 +109,13 @@ describe("searching", { skip: !DB && "set TEST_DATABASE_URL to run" }, () => {
       );
       for (const [slot, [name, guest, level]] of players.entries()) {
         await pool.query(
-          `INSERT INTO replay_participants (cycle, replay_id, slot, username, guest, level) VALUES ($1,$2,$3,$4,$5,$6)`,
-          [cycle, id, slot, name, guest, level],
+          `INSERT INTO replay_participants (cycle, replay_id, slot, username, guest, level, avatar_hash) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+          [cycle, id, slot, name, guest, level, SKIN_OF[`${cycle}:${id}:${name}`] ?? null],
         );
       }
+    }
+    for (const [hash, avatar] of Object.entries(SKINS)) {
+      await pool.query(`INSERT INTO avatars (hash, avatar) VALUES ($1, $2)`, [hash, avatar]);
     }
     await pool.query(`INSERT INTO maps (mapid, version, name, author) VALUES (10, 1, 'Death Arrows Pit', 'Saucy'), (20, 1, 'Ball Park', 'Tulip'), (30, 1, 'Lonely', 'Saucy')`);
     // Cycle 5 replays carry an estimated day instead of fetched_at.
@@ -199,6 +216,51 @@ describe("searching", { skip: !DB && "set TEST_DATABASE_URL to run" }, () => {
   });
 });
 
+describe("player skins", { skip: !DB && "set TEST_DATABASE_URL to run" }, () => {
+  let pool, server, base;
+
+  before(async () => {
+    pool = new pg.Pool({ connectionString: DB });
+    const app = express();
+    registerApiRoutes(app, pool);
+    await new Promise((resolve) => {
+      server = app.listen(0, "127.0.0.1", resolve);
+    });
+    base = `http://127.0.0.1:${server.address().port}`;
+  });
+
+  after(async () => {
+    server?.close();
+    await pool?.end();
+  });
+
+  test("lookup gives each player's latest skin, with when it was seen", async () => {
+    const res = await fetch(`${base}/api/players/lookup?names=alpha&names=Beta&names=Gamma`);
+    const byName = Object.fromEntries((await res.json()).results.map((r) => [r.username, r.skin]));
+    assert.deepEqual(byName.Alpha, {
+      hash: "bbbb",
+      avatar: SKINS.bbbb,
+      seen_at: "2026-06-02T12:00:00.000Z",
+      seen_day: "2026-06-02",
+      seen_estimated: false,
+      replay: { cycle: 6, id: "2" },
+    });
+    assert.equal(byName.Beta.hash, "aaaa"); // newest replay *with* a skin
+    assert.equal(byName.Gamma, null);
+  });
+
+  test("profile carries the latest skin", async () => {
+    const body = await (await fetch(`${base}/api/player/Alpha`)).json();
+    assert.equal(body.skin.hash, "bbbb");
+    assert.deepEqual(body.skin.avatar, SKINS.bbbb);
+  });
+
+  test("a guest's skin never shows up", async () => {
+    const res = await fetch(`${base}/api/players/lookup?names=guesty`);
+    assert.deepEqual((await res.json()).results, []);
+  });
+});
+
 describe("sync with bonkverse.io", { skip: !DB && "set TEST_DATABASE_URL to run" }, () => {
   let pool, server, base;
   const TOKEN = "test-sync-token";
@@ -275,5 +337,24 @@ describe("sync with bonkverse.io", { skip: !DB && "set TEST_DATABASE_URL to run"
     assert.deepEqual(names, ["Alpha", "Beta", "Delta", "Gamma", "_x_", "solo man"]); // no guests
     const alphaLevels = all.filter((n) => n.username === "Alpha").map((n) => n.level);
     assert.ok(alphaLevels.includes(121));
+  });
+
+  test("each name carries its latest skin in the batch, each skin sent once", async () => {
+    const page = await fetch(`${base}/api/internal/replay-names?limit=100`, { headers: auth }).then((r) => r.json());
+    const byName = Object.fromEntries(page.names.map((n) => [n.username, n]));
+    assert.equal(byName.Alpha.skin, "bbbb");
+    assert.equal(new Date(byName.Alpha.skin_seen_at).toISOString(), "2026-06-02T12:00:00.000Z");
+    assert.equal(byName.Beta.skin, "aaaa");
+    assert.equal(byName.Gamma.skin, null);
+    assert.equal(byName.Gamma.skin_seen_at, null);
+    assert.deepEqual(Object.keys(page.avatars).sort(), ["aaaa", "bbbb"]); // no guest skin
+    assert.deepEqual(page.avatars.bbbb, SKINS.bbbb);
+  });
+
+  test("a skin from a replay collected after the fact is dated by its estimated day", async () => {
+    const page = await fetch(`${base}/api/internal/replay-names?limit=1`, { headers: auth }).then((r) => r.json());
+    // Cycle 5's replay: estimated day 2025-04-10, not its fetched_at.
+    assert.equal(page.names[0].skin, "aaaa");
+    assert.equal(new Date(page.names[0].skin_seen_at).toISOString(), "2025-04-10T00:00:00.000Z");
   });
 });
