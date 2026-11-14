@@ -12,7 +12,9 @@
 //                                     seen in replays, a batch of replays at a
 //                                     time after a cursor, so players who've
 //                                     never been in a friend list can be
-//                                     found on its Players page.
+//                                     found on its Players page. Each name
+//                                     also carries the skin it wore last in
+//                                     the batch, for profile avatars.
 //
 // Both need `Authorization: Bearer $BONKVERSE_SYNC_TOKEN` (the same secret
 // is set on the bonkverse service). Without the variable the routes answer
@@ -122,8 +124,14 @@ export function registerSyncRoutes(app, pool, { sendDbError }) {
 
   // ?after=cycle:id (exclusive; omit to start at the beginning)
   // &limit=N replays to read this time (default 5000)
-  // → { names: [{username, level, games}], next: "cycle:id", done }
+  // → { names: [{username, level, games, skin, skin_seen_at}], avatars,
+  //     next: "cycle:id", done }
   // `level` is the highest seen in these replays; `games` counts them.
+  // `skin` is the hash of the skin in their newest replay of the batch
+  // (null if none), and `avatars` maps each hash to its { layers, bc }
+  // once, so a skin worn by many names is sent once. `skin_seen_at` is when
+  // that replay was collected, or its estimated day (replay_cycle_days) at
+  // 00:00 UTC for replays collected after the fact.
   app.get("/api/internal/replay-names", requireSyncToken, async (req, res) => {
     const after = parseCursor(req.query.after);
     const limitParam = parseInt(req.query.limit, 10);
@@ -133,27 +141,42 @@ export function registerSyncRoutes(app, pool, { sendDbError }) {
     try {
       const { rows } = await pool.query(
         `WITH batch AS (
-           SELECT cycle, id FROM replays
-           WHERE (cycle, id) > ($1::int, $2::bigint)
-           ORDER BY cycle, id
+           SELECT r.cycle, r.id,
+                  COALESCE(rcd.day::timestamp AT TIME ZONE 'UTC', r.fetched_at) AS seen_at
+           FROM replays r
+           LEFT JOIN replay_cycle_days rcd
+             ON rcd.cycle = r.cycle AND r.id BETWEEN rcd.first_id AND rcd.last_id
+           WHERE (r.cycle, r.id) > ($1::int, $2::bigint)
+           ORDER BY r.cycle, r.id
            LIMIT $3
          ),
-         names AS (
-           SELECT rp.username, max(rp.level) AS level, count(*)::int AS games
+         seen AS (
+           SELECT rp.username, rp.level, rp.avatar_hash, b.cycle, b.id, b.seen_at
            FROM batch b
            JOIN replay_participants rp ON rp.cycle = b.cycle AND rp.replay_id = b.id
            WHERE NOT rp.guest
-           GROUP BY rp.username
+         ),
+         names AS (
+           SELECT username, max(level) AS level, count(*)::int AS games,
+                  (array_agg(avatar_hash ORDER BY cycle DESC, id DESC)
+                     FILTER (WHERE avatar_hash IS NOT NULL))[1] AS skin,
+                  (array_agg(seen_at ORDER BY cycle DESC, id DESC)
+                     FILTER (WHERE avatar_hash IS NOT NULL))[1] AS skin_seen_at
+           FROM seen
+           GROUP BY username
          )
          SELECT
            (SELECT count(*)::int FROM batch) AS n,
            (SELECT cycle || ':' || id FROM batch ORDER BY cycle DESC, id DESC LIMIT 1) AS last,
-           (SELECT COALESCE(json_agg(names ORDER BY names.username), '[]'::json) FROM names) AS names`,
+           (SELECT COALESCE(json_agg(names ORDER BY names.username), '[]'::json) FROM names) AS names,
+           (SELECT COALESCE(json_object_agg(a.hash, a.avatar), '{}'::json)
+              FROM avatars a WHERE a.hash IN (SELECT skin FROM names WHERE skin IS NOT NULL)) AS avatars`,
         [after.cycle, after.id, limit]
       );
-      const { n, last, names } = rows[0];
+      const { n, last, names, avatars } = rows[0];
       return res.json({
         names,
+        avatars,
         next: last ?? `${after.cycle}:${after.id}`,
         done: n < limit,
       });
