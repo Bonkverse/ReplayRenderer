@@ -216,7 +216,7 @@ describe("searching", { skip: !DB && "set TEST_DATABASE_URL to run" }, () => {
   });
 });
 
-describe("player skins", { skip: !DB && "set TEST_DATABASE_URL to run" }, () => {
+describe("skins stay private", { skip: !DB && "set TEST_DATABASE_URL to run" }, () => {
   let pool, server, base;
 
   before(async () => {
@@ -234,30 +234,18 @@ describe("player skins", { skip: !DB && "set TEST_DATABASE_URL to run" }, () => 
     await pool?.end();
   });
 
-  test("lookup gives each player's latest skin, with when it was seen", async () => {
-    const res = await fetch(`${base}/api/players/lookup?names=alpha&names=Beta&names=Gamma`);
-    const byName = Object.fromEntries((await res.json()).results.map((r) => [r.username, r.skin]));
-    assert.deepEqual(byName.Alpha, {
-      hash: "bbbb",
-      avatar: SKINS.bbbb,
-      seen_at: "2026-06-02T12:00:00.000Z",
-      seen_day: "2026-06-02",
-      seen_estimated: false,
-      replay: { cycle: 6, id: "2" },
-    });
-    assert.equal(byName.Beta.hash, "aaaa"); // newest replay *with* a skin
-    assert.equal(byName.Gamma, null);
+  // Public routes: a stored avatar is the skin itself, so it only goes out
+  // through the token-protected replay-names sync (tested below).
+  test("the public lookup never returns skins", async () => {
+    const body = await (await fetch(`${base}/api/players/lookup?names=alpha&names=Beta`)).text();
+    assert.equal(JSON.parse(body).results.length, 2);
+    for (const field of ['"skin"', '"avatar"', '"layers"', '"bc"']) assert.ok(!body.includes(field), field);
   });
 
-  test("profile carries the latest skin", async () => {
-    const body = await (await fetch(`${base}/api/player/Alpha`)).json();
-    assert.equal(body.skin.hash, "bbbb");
-    assert.deepEqual(body.skin.avatar, SKINS.bbbb);
-  });
-
-  test("a guest's skin never shows up", async () => {
-    const res = await fetch(`${base}/api/players/lookup?names=guesty`);
-    assert.deepEqual((await res.json()).results, []);
+  test("the public profile never returns skins", async () => {
+    const body = await (await fetch(`${base}/api/player/Alpha`)).text();
+    assert.equal(JSON.parse(body).username, "Alpha");
+    for (const field of ['"skin"', '"avatar"', '"layers"', '"bc"']) assert.ok(!body.includes(field), field);
   });
 });
 
