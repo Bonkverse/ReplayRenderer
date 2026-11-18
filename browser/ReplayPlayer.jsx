@@ -305,7 +305,13 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
   // Does NOT touch the live player: it builds its own bonk core + offscreen
   // renderer, reuses the steps the live engine already simulated, and reports
   // progress. The live replay keeps playing and stays interactive throughout.
-  async function exportReplayMp4({ scale = 2, fps = 60 } = {}) {
+  async function exportReplayMp4({
+    scale = 2,
+    fps = 60,
+    bitrate = 16_000_000,
+    startStep = 0,
+    endStep: clipEnd = null,
+  } = {}) {
     const e = engine.current;
     if (!e || typeof VideoEncoder === "undefined") {
       return exportVisibleReplayVideo(); // fall back to webm path
@@ -316,8 +322,10 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
     // 1) Make sure every step is simulated once, on the LIVE engine (cheap,
     //    physics only) so we don't simulate the whole replay a second time.
     const es = e.replay.es || e.computed;
-    ensureSimTo(es);
-    const cap = e.stoppedEarly ? e.computed : Math.min(es, e.computed);
+    const targetEnd = Math.min(clipEnd ?? es, es);
+    ensureSimTo(targetEnd);
+    const cap = e.stoppedEarly ? e.computed : Math.min(targetEnd, e.computed);
+    const first = Math.max(0, Math.min(startStep, cap));
 
     const realPerfNow = performance.now.bind(performance);
     const realDateNow = Date.now.bind(Date);
@@ -370,7 +378,7 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
         codec: "avc1.640028",
         width: W,
         height: H,
-        bitrate: 16_000_000,
+        bitrate,
         framerate: fps,
       });
 
@@ -384,11 +392,11 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
 
       const stepsPerFrame = STEPS_PER_SEC / fps; // 30/60 = 0.5
       const frameDurUs = 1e6 / fps;
-      const totalFrames = Math.ceil((cap || 1) / stepsPerFrame);
+      const totalFrames = Math.ceil((cap - first || 1) / stepsPerFrame);
 
       for (let f = 0; f < totalFrames; f++) {
         performance.__v = f * frameMs; // virtual time for THIS frame
-        const playhead = f * stepsPerFrame;
+        const playhead = first + f * stepsPerFrame;
         const whole = Math.min(Math.floor(playhead), cap);
         const t = playhead - whole;
 
@@ -420,6 +428,12 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
       muxer.finalize();
 
       const blob = new Blob([muxer.target.buffer], { type: "video/mp4" });
+      // A headless renderer (server/render-video) takes the file here
+      // instead of a browser download.
+      if (typeof globalThis.__onReplayExport === "function") {
+        globalThis.__onReplayExport(blob);
+        return;
+      }
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -965,7 +979,7 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
   // underlying export state itself, which is entangled with the internal
   // engine ref.
   useImperativeHandle(ref, () => ({
-    exportMp4: () => exportReplayMp4(),
+    exportMp4: (options) => exportReplayMp4(options),
     exportGif: () => exportReplayGif(),
     // Current playhead in seconds, for "share at this moment" links.
     getTime: () => (engine.current?.playhead ?? 0) / STEPS_PER_SEC,

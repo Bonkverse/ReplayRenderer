@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- Without this, phones lay the page out at desktop width and shrink it.
+         viewport-fit=cover lets the layout use env(safe-area-inset-*) around
+         the notch and home indicator. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <title>Bonkverse replay renderer</title>
+    <meta
+      name="description"
+      content="Search, watch and export bonk.io replays by player, replay ID or map."
+    />
+
+    <!-- Installable / app-like on phones (Add to Home Screen) -->
+    <meta name="theme-color" content="#141f2b" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Replays" />
+    <!-- Not a page for people: headless Chrome opens it to turn a replay into
+         a video (server/render-video.mjs). -->
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+
+
+    <!-- Bonk Fonts (Futura PT): used by the game canvas and, via
+         dev.css, by the whole page -->
+    <style>
+      @font-face {
+        font-family: "Bonk";
+        src: url("/vendor/fonts/fptmed.otf") format("opentype");
+      }
+
+      @font-face {
+        font-family: "fptmed";
+        src: url("/vendor/fonts/fptmed.otf") format("opentype");
+      }
+
+      @font-face {
+        font-family: "fptbook";
+        src: url("/vendor/fonts/fptbook.otf") format("opentype");
+      }
+
+      @font-face {
+        font-family: "fptb";
+        src: url("/vendor/fonts/fptb.otf") format("opentype");
+      }
+
+      @font-face {
+        font-family: "fptl";
+        src: url("/vendor/fonts/fptl.otf") format("opentype");
+      }
+
+      @font-face {
+        font-family: "futurept_medium";
+        src: url("/vendor/fonts/fptmed.otf") format("opentype");
+        font-weight: normal;
+        font-style: normal;
+      }
+
+      @font-face {
+        font-family: "futurept_book";
+        src: url("/vendor/fonts/fptbook.otf") format("opentype");
+        font-weight: normal;
+        font-style: normal;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: #141f2b;
+        color: #edf4fb;
+        font-family: "fptbook", system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        -webkit-text-size-adjust: 100%;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      /* The page scrolls on <html> only. Giving <body> its own overflow made
+         it a separate (never-scrolling) scroll container, and with
+         overscroll-behavior on it the mouse wheel stopped there instead of
+         scrolling the page. */
+      html {
+        overflow-x: hidden;
+        overscroll-behavior-y: none;
+      }
+
+      * {
+        box-sizing: border-box;
+        font-family: inherit;
+      }
+    </style>
+
+    <!-- Bonk Runtime -->
+    <script src="/vendor/pixi-legacy-540.min.js"></script>
+    <script src="/vendor/pixi-filters-311.js"></script>
+    <script src="/vendor/Tween.js"></script>
+
+    <!-- Audio -->
+    <script src="/vendor/howler.min.js"></script>
+    <script src="/vendor/howler.spatial.min.js"></script>
+
+    <!-- Embedded SVGs / Sounds -->
+    <script src="/vendor/GameResources.js"></script>
+
+    <!-- Skin renderer — same files/API the decoder tool uses to draw player
+         avatars (window.BONK_SKIN_SHAPES + window.renderBonkAvatar). -->
+    <script src="/skin-shapes.js"></script>
+    <script src="/skin-render.js"></script>
+  </head>
+
+  <body>
+    <!-- Elements expected by Bonk -->
+    <div id="pagecontainer" style="display:none"></div>
+    <div id="bonkiocontainer" style="display:none"></div>
+    <div id="pretty_top_bar" style="display:none"></div>
+
+    <div id="xpbarcontainer" style="display:none"></div>
+    <div id="xpbar" style="display:none"></div>
+    <div id="ingamewinner" style="display:none"></div>
+    <div id="ingamecountdown" style="display:none"></div>
+    <div id="ingamemapcredit" style="display:none"></div>
+
+    <!-- React -->
+    <div id="root"></div>
+
+    <script type="module" src="/browser/render-entry.jsx"></script>
+  </body>
+</html>
