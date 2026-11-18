@@ -82,8 +82,10 @@ separate). Guests never get a profile: their names aren't unique.
   when the day comes from cycle estimates). Names with no replays are left
   out. Used by Bonkverse's player search cards and
   its public API.
-- `GET /api/players?q=abc` → up to 10 registered names starting with `q`
-  (3+ characters), most-played first.
+- `GET /api/players?q=abc` → up to 10 registered names, most-played first:
+  the name `q` itself first, ignoring case and spaces at the end of the name
+  (any length, so 1-2 character accounts are found), then, from 3
+  characters, names starting with `q`.
 
 **No skins in these public routes.** A stored avatar (`{ layers, bc }`) is
 the skin itself, enough to wear or edit an exact copy, and these routes are

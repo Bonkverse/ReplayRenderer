@@ -7,7 +7,7 @@
 //
 // AND binds before OR: the rules are cut into groups at each OR, each group
 // is ANDed, and the groups are ORed.
-import { patternRegex } from "../shared/replayQuery.js";
+import { endTrimVariants, patternRegex } from "../shared/replayQuery.js";
 
 const likeSafe = (s) => s.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
 
@@ -19,8 +19,19 @@ function numberCond(expr, rule, p, cast = "") {
 }
 
 // A text comparison on a column: contains / starts / ends / is / pattern,
-// case-insensitive unless the rule asks for match case.
+// case-insensitive unless the rule asks for match case. With trimEnd (ignore
+// spaces at the end) the column is compared without its trailing spaces;
+// the rule's value already has none (shared/replayQuery.js).
 function textCond(column, rule, p, op = rule.op) {
+  if (rule.trimEnd) {
+    if ((op === "is" || op === "is_not") && !rule.caseSensitive) {
+      // Same answer as lower(rtrim(column)) = lower(value), but an exact
+      // match on lower(column), so it can use the name index.
+      const variants = endTrimVariants(rule.value.toLowerCase());
+      return `lower(${column}) = ANY(${p(variants)}::text[])`;
+    }
+    column = `rtrim(${column})`;
+  }
   const col = rule.caseSensitive ? column : `lower(${column})`;
   const val = (v) => (rule.caseSensitive ? p(v) : `lower(${p(v)})`);
   switch (op) {

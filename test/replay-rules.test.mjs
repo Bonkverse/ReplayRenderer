@@ -15,6 +15,8 @@ import {
   rulesToParams,
   describeRule,
   patternRegex,
+  endTrimVariants,
+  MAX_PADDED_LENGTH,
 } from "../shared/replayQuery.js";
 import { registerApiRoutes } from "../server/api-routes.mjs";
 
@@ -50,6 +52,22 @@ describe("parsing", () => {
   test("round-trips through URL params", () => {
     const rules = parseRules(new URLSearchParams("f0=map&o0=starts&v0=Death&k0=1&c1=or&f1=date&o1=between&v1=2026-05-01&w1=2026-06-01"));
     assert.deepEqual(parseRules(qs(rules)), rules);
+  });
+
+  test("ignore end spaces: trims the value, round-trips and shows on the chip", () => {
+    const rules = parseRules(new URLSearchParams("f0=player&o0=is&v0=ako%20%20&t0=1&f1=map&o1=is&v1=%20%20&t1=1"));
+    // A value of only spaces is nothing once trimmed, so that rule is dropped.
+    assert.deepEqual(rules.map((r) => [r.value, r.trimEnd]), [["ako", true]]);
+    assert.deepEqual(parseRules(qs(rules)), rules);
+    assert.equal(describeRule(rules[0]), "Player is in the game “ako” (ignoring end spaces)");
+  });
+
+  test("end-space variants cover every padding up to the longest name", () => {
+    const v = endTrimVariants("ako");
+    assert.equal(v[0], "ako");
+    assert.equal(v[17], "ako" + " ".repeat(17));
+    assert.equal(v.at(-1).length, MAX_PADDED_LENGTH);
+    assert.deepEqual(endTrimVariants("x".repeat(MAX_PADDED_LENGTH + 5)), ["x".repeat(MAX_PADDED_LENGTH + 5)]);
   });
 
   test("describes rules for chips", () => {
@@ -98,7 +116,7 @@ describe("searching", { skip: !DB && "set TEST_DATABASE_URL to run" }, () => {
       [1, 6, 10, "2026-06-01", ["ard", false, false, 5, 3, 3000, 2, 0], [["Alpha", false, 120], ["Beta", false, 40]]],
       [2, 6, 10, "2026-06-02", ["ard", true, true, 3, 3, 12000, 4, 1], [["Alpha", false, 121], ["guesty", true, 1], ["Gamma", false, 15], ["Delta", false, 9]]],
       [3, 6, 20, "2026-06-03", ["f", true, false, 2, 5, 9000, 8, 0], [["_x_", false, 60], ["Beta", false, 41]]],
-      [4, 6, 30, "2026-06-04", ["b", false, false, 1, 1, 600, 1, 0], [["solo man", false, 3]]],
+      [4, 6, 30, "2026-06-04", ["b", false, false, 1, 1, 600, 1, 0], [["solo man", false, 3], ["ako" + " ".repeat(17), false, 7]]],
       [5, 5, 20, "2025-01-01", ["b", false, false, 4, 3, 1800, 3, 2], [["Alpha", false, 80]]],
     ];
     for (const [id, cycle, mapid, day, meta, players] of games) {
@@ -151,6 +169,11 @@ describe("searching", { skip: !DB && "set TEST_DATABASE_URL to run" }, () => {
     ["name pattern", [rule("player", "pattern", "?e?a")], [1, 3]],
     ["name pattern, longer", [rule("player", "pattern", "?e??a")], [2]],
     ["name with a space", [rule("player", "contains", " ")], [4]],
+    ["padded name isn't found by its visible name", [rule("player", "is", "ako")], []],
+    ["padded name, ignoring end spaces", [{ ...rule("player", "is", "AKO"), trimEnd: true }], [4]],
+    ["padded name ends with o, ignoring end spaces", [{ ...rule("player", "ends", "ko"), trimEnd: true }], [4]],
+    ["ignore end spaces with match case", [{ ...rule("player", "is", "AKO"), trimEnd: true, caseSensitive: true }], []],
+    ["isn't in the game, ignoring end spaces", [{ ...rule("player", "is_not", "ako"), trimEnd: true }], [1, 2, 3, 5]],
     ["guest names are left out by default", [rule("player", "is", "guesty")], []],
     ["a player's level", [rule("level", "gte", "100")], [1, 2]],
     ["level between", [rule("level", "between", "40", "60")], [1, 3]],
@@ -194,6 +217,28 @@ describe("searching", { skip: !DB && "set TEST_DATABASE_URL to run" }, () => {
     const body = await (await fetch(`${base}/api/search?q=500&scope=dbid`)).json();
     assert.equal(body.query.dbidPlayer, "alpha");
     assert.deepEqual(await ids("q=abc&scope=dbid"), []); // not a number
+  });
+
+  async function names(q) {
+    const res = await fetch(`${base}/api/players?q=${encodeURIComponent(q)}`);
+    assert.equal(res.status, 200);
+    return (await res.json()).results.map((r) => r.username);
+  }
+
+  test("player lookup: a short name finds that exact name only", async () => {
+    assert.deepEqual(await names("_x_"), ["_x_"]);
+    assert.deepEqual(await names("al"), []); // too short for "starts with"
+    assert.deepEqual(await names(""), []);
+  });
+
+  test("player lookup: a padded name is found by what it looks like, first", async () => {
+    assert.deepEqual(await names("ako"), ["ako" + " ".repeat(17)]);
+    assert.deepEqual(await names("AKO "), ["ako" + " ".repeat(17)]);
+  });
+
+  test("player lookup: from 3 characters, exact first then names starting with it", async () => {
+    assert.deepEqual(await names("alp"), ["Alpha"]);
+    assert.deepEqual(await names("alpha"), ["Alpha"]); // exact and prefix: listed once
   });
 
   test("\"All\" with a number also matches a DBID", async () => {
@@ -322,7 +367,8 @@ describe("sync with bonkverse.io", { skip: !DB && "set TEST_DATABASE_URL to run"
       if (page.done) break;
     }
     const names = [...new Set(all.map((n) => n.username))].sort();
-    assert.deepEqual(names, ["Alpha", "Beta", "Delta", "Gamma", "_x_", "solo man"]); // no guests
+    // No guests; padded names are sent exactly as stored.
+    assert.deepEqual(names, ["Alpha", "Beta", "Delta", "Gamma", "_x_", "ako" + " ".repeat(17), "solo man"]);
     const alphaLevels = all.filter((n) => n.username === "Alpha").map((n) => n.level);
     assert.ok(alphaLevels.includes(121));
   });

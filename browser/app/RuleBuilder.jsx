@@ -16,7 +16,7 @@ const blank = (conn = "and") => withDefaults({ id: nextId++, conn, field: "playe
 function withDefaults(rule) {
   const spec = FIELD_BY_KEY[rule.field];
   const first = spec.choices ? spec.choices[0][0] : "";
-  return { value: first, value2: first, caseSensitive: false, ...rule, op: rule.op ?? spec.ops[0][0] };
+  return { value: first, value2: first, caseSensitive: false, trimEnd: false, ...rule, op: rule.op ?? spec.ops[0][0] };
 }
 
 /** A rule that can go in the URL (the server drops anything else too). */
@@ -152,6 +152,17 @@ function RuleLine({ rule, index, onChange, onRemove, fieldRef }) {
             />
             <span aria-hidden="true">Aa</span>
             <span className="visually-hidden">Match case</span>
+          </label>
+        )}
+        {spec.value === "text" && (
+          <label className="qb__case" title="Ignore spaces at the end of names">
+            <input
+              type="checkbox"
+              checked={rule.trimEnd}
+              onChange={(e) => onChange({ trimEnd: e.target.checked })}
+            />
+            <span aria-hidden="true">␣</span>
+            <span className="visually-hidden">Ignore spaces at the end of names</span>
           </label>
         )}
       </div>

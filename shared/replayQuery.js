@@ -12,7 +12,11 @@
 // Rules travel in the URL as numbered parameters, the same as on
 // bonkverse.io's Players page: c1 (AND/OR, not on the first), f0 (field),
 // o0 (condition), v0 (value), w0 (second value for "between"), k0 (match
-// case, text only).
+// case, text only), t0 (ignore spaces at the end, text only).
+//
+// t0 is for padded names: "ako" with 17 spaces after it looks like "ako"
+// wherever it's shown, so "Player is in the game ako" only finds it with
+// that switch on. The typed value loses its trailing spaces too.
 
 export const MAX_RULES = 12;
 export const MAX_TEXT = 100;
@@ -200,6 +204,7 @@ function readRule(get, i) {
     value: "",
     value2: "",
     caseSensitive: false,
+    trimEnd: false,
   };
   const raw = get(`v${i}`) ?? "";
   const raw2 = get(`w${i}`) ?? "";
@@ -209,6 +214,8 @@ function readRule(get, i) {
   if (spec.value === "text") {
     rule.value = String(raw).slice(0, MAX_TEXT); // not trimmed: spaces are part of names
     rule.caseSensitive = get(`k${i}`) === "1";
+    rule.trimEnd = get(`t${i}`) === "1";
+    if (rule.trimEnd) rule.value = rule.value.replace(/ +$/, "");
     return rule.value ? rule : null;
   }
   if (spec.value === "choice") {
@@ -252,6 +259,7 @@ export function rulesToParams(rules) {
     if (r.value) out[`v${i}`] = r.value;
     if (r.value2 && r.op === "between") out[`w${i}`] = r.value2;
     if (r.caseSensitive) out[`k${i}`] = "1";
+    if (r.trimEnd) out[`t${i}`] = "1";
   });
   return out;
 }
@@ -264,11 +272,28 @@ export function describeRule(r) {
   if (spec.value === "choice") return `${spec.label} ${op} ${spec.choices.find(([k]) => k === r.value)[1]}`;
   if (spec.value === "text") {
     const shown = r.value.replace(/ /g, "␣");
-    return `${spec.label} ${op} “${shown}”${r.caseSensitive ? " (Aa)" : ""}`;
+    const flags = (r.caseSensitive ? " (Aa)" : "") + (r.trimEnd ? " (ignoring end spaces)" : "");
+    return `${spec.label} ${op} “${shown}”${flags}`;
   }
   const unit = spec.unit ? ` ${spec.unit}` : "";
   if (r.op === "between") return `${spec.label} ${op} ${r.value} and ${r.value2}${unit}`;
   return `${spec.label} ${op} ${r.value}${unit}`;
+}
+
+// Longest name endTrimVariants pads to. The longest bonk.io name seen is 35
+// characters (bonkverse.io's docs/bonk/accounts.md).
+export const MAX_PADDED_LENGTH = 40;
+
+/**
+ * `name` followed by 0, 1, 2 … spaces up to MAX_PADDED_LENGTH characters:
+ * every stored name equal to `name` once trailing spaces are dropped. As an
+ * `= ANY(...)` list this is an exact match, so it uses the name index where
+ * `rtrim(username) = name` would scan.
+ */
+export function endTrimVariants(name) {
+  const out = [name];
+  for (let s = name + " "; s.length <= MAX_PADDED_LENGTH; s += " ") out.push(s);
+  return out;
 }
 
 /** A name pattern as an anchored POSIX regex: * any run, ? one character. */
