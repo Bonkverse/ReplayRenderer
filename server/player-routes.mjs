@@ -22,6 +22,8 @@
 // estimated upload day from replay_cycle_days, so hours of the day come from
 // live-collected replays only, and the response says how many that was.
 
+import { endTrimVariants } from "../shared/replayQuery.js";
+
 const MAX_NAME_LENGTH = 100;
 const TOP_N = 10;
 const RECENT_N = 6;
@@ -437,29 +439,44 @@ export function registerPlayerRoutes(app, pool, { enrichKeys, sendDbError }) {
 
   // ─── Name lookup (autocomplete / "did you mean") ────────────────────────
   //
-  // GET /api/players?q=prefix → up to 10 registered names starting with q,
-  // most-played first. Served by the trigram index on lower(username),
-  // which needs at least 3 characters to narrow anything down.
+  // GET /api/players?q=name → up to 10 registered names, most-played first:
+  //   1. the name q itself, ignoring case and spaces at the end of the name
+  //      (padded accounts like "ako" + 17 spaces look unpadded when shown).
+  //      Any length: rare 1-2 character accounts are what people look up.
+  //   2. from 3 characters, names starting with q. Served by the trigram
+  //      index on lower(username), which needs 3 characters to narrow
+  //      anything down; the exact match uses the plain name index instead.
   app.get("/api/players", async (req, res) => {
     const q = String(req.query.q ?? "");
-    if (q.length < 3 || q.length > MAX_NAME_LENGTH) return res.json({ results: [] });
+    const name = q.replace(/ +$/, "");
+    if (!name || q.length > MAX_NAME_LENGTH) return res.json({ results: [] });
 
     const likeSafe = (s) => s.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+    const summary = (where) => `
+      SELECT (array_agg(username ORDER BY cycle DESC, replay_id DESC))[1] AS username,
+             count(*)::int AS games,
+             max(level) AS level
+      FROM replay_participants
+      WHERE NOT guest AND ${where}
+      GROUP BY lower(username)
+      ORDER BY count(*) DESC
+      LIMIT 10`;
     try {
-      const result = await pool.query(
-        `SELECT (array_agg(username ORDER BY cycle DESC, replay_id DESC))[1] AS username,
-                count(*)::int AS games,
-                max(level) AS level
-         FROM replay_participants
-         WHERE NOT guest
-           AND lower(username) LIKE lower($1) || '%' ESCAPE '\\'
-         GROUP BY lower(username)
-         ORDER BY count(*) DESC
-         LIMIT 10`,
-        [likeSafe(q)]
+      const exact = await pool.query(
+        summary("lower(username) = ANY($1::text[])"),
+        [endTrimVariants(name.toLowerCase())]
       );
+      let rows = exact.rows;
+      if (q.length >= 3) {
+        const prefix = await pool.query(
+          summary("lower(username) LIKE lower($1) || '%' ESCAPE '\\'"),
+          [likeSafe(q)]
+        );
+        const seen = new Set(rows.map((r) => r.username.toLowerCase()));
+        rows = rows.concat(prefix.rows.filter((r) => !seen.has(r.username.toLowerCase()))).slice(0, 10);
+      }
       res.setHeader("Cache-Control", "public, max-age=300");
-      return res.json({ results: result.rows });
+      return res.json({ results: rows });
     } catch (err) {
       console.error("GET /api/players failed:", err);
       return sendDbError(res, err, "We couldn't look up players right now.");
