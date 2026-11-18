@@ -268,36 +268,11 @@ export function registerApiRoutes(app, pool) {
     }
 
     try {
-      const result = await pool.query(
-        `
-        SELECT r.cycle, r.id, r.mapid, r.replaydata, r.fetched_at,
-               to_char(rcd.day, 'YYYY-MM-DD') AS estimated_day
-        FROM replays r
-        LEFT JOIN replay_cycle_days rcd
-          ON rcd.cycle = r.cycle AND r.id BETWEEN rcd.first_id AND rcd.last_id
-        WHERE r.id = $1::bigint
-          AND ($2::int IS NULL OR r.cycle = $2::int)
-        ORDER BY r.cycle DESC
-        LIMIT 1
-        `,
-        [id, cycle]
-      );
-
-      if (!result.rows.length) {
+      const replay = await loadReplay(pool, id, cycle);
+      if (!replay) {
         return res.status(404).json({ error: `Replay ${id} wasn't found.` });
       }
-
-      const row = result.rows[0];
-      const decoded = decodeStoredReplay(row.replaydata);
-
-      return res.json({
-        cycle: row.cycle,
-        id: String(row.id),
-        mapid: row.mapid != null ? String(row.mapid) : null,
-        fetched_at: row.fetched_at,
-        estimated_day: row.estimated_day,
-        decoded,
-      });
+      return res.json(replay);
     } catch (err) {
       console.error("GET /api/replay/:id failed:", err);
       return sendDbError(res, err, "We couldn't load that replay. Please try again.");
@@ -537,6 +512,39 @@ export function registerApiRoutes(app, pool) {
 // Shared pool factory, also used by both servers — same connection-pooling
 // rationale as before (see dev-api.mjs git history / prior conversation):
 // avoids a fresh TCP+TLS+auth handshake on every single request.
+/**
+ * One replay by id (newest cycle unless `cycle` is given): the decoded replay
+ * plus the facts that only live in the database. null if there's no such
+ * replay. Used by GET /api/replay/:id and the video renderer
+ * (server/render-server.mjs).
+ */
+export async function loadReplay(pool, id, cycle = null) {
+  const result = await pool.query(
+    `
+    SELECT r.cycle, r.id, r.mapid, r.replaydata, r.fetched_at,
+           to_char(rcd.day, 'YYYY-MM-DD') AS estimated_day
+    FROM replays r
+    LEFT JOIN replay_cycle_days rcd
+      ON rcd.cycle = r.cycle AND r.id BETWEEN rcd.first_id AND rcd.last_id
+    WHERE r.id = $1::bigint
+      AND ($2::int IS NULL OR r.cycle = $2::int)
+    ORDER BY r.cycle DESC
+    LIMIT 1
+    `,
+    [id, cycle]
+  );
+  if (!result.rows.length) return null;
+  const row = result.rows[0];
+  return {
+    cycle: row.cycle,
+    id: String(row.id),
+    mapid: row.mapid != null ? String(row.mapid) : null,
+    fetched_at: row.fetched_at,
+    estimated_day: row.estimated_day,
+    decoded: decodeStoredReplay(row.replaydata),
+  };
+}
+
 export function createPool(Pool) {
   if (!process.env.DATABASE_URL) {
     throw new Error("DATABASE_URL is not set");

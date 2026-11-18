@@ -105,3 +105,26 @@ CREATE INDEX idx_replays_mode ON replays(mode);
 - [ ] `npm run render` produced `replay-render.png` from a real replay
 - [ ] `core/` + `browser/` copied into the frontend; grid + player mounted
 - [ ] search columns added at ingest
+
+## Replay video service (for BonxBot)
+
+`server/render-server.mjs` turns a replay into an MP4 for Discord. It runs as
+its **own Railway service** from this repo, because it needs Chrome and the
+replay site doesn't.
+
+1. In the Bonkverse project, add a service from this repo. Set
+   `RAILWAY_DOCKERFILE_PATH=Dockerfile.render`.
+2. Variables:
+   - `DATABASE_URL`: the Replay DB, same as the replay site
+   - `RENDER_TOKEN`: a long random string; BonxBot sends it as `Bearer`
+   - optional `RENDER_CONCURRENCY` (default 1)
+3. Give it a private domain only. BonxBot calls it on Railway's private
+   network, so it never needs to be public.
+
+API: `POST /render {"replay_id": "123", "cycle": 6?}` returns the replay
+summary plus the MP4 as base64. `GET /health` checks it's up. Nothing is
+stored: each video goes back in the reply and is gone. A 15 s replay renders
+in about 3 s at 730×500, 30 fps, ~1.2 MB.
+
+Locally: `npm run build`, then
+`DATABASE_URL=… RENDER_TOKEN=dev npm run start:render`.
