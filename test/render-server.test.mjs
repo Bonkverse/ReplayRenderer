@@ -218,3 +218,90 @@ describe("fitting Discord's upload limit", () => {
     assert.deepEqual(DEFAULT_VIDEO, { scale: 2, fps: 60, bitrate: 16_000_000 });
   });
 });
+
+// ─── POST /replays/with (BonxBot's replay feed), against a database ──────────
+
+const DB = process.env.TEST_DATABASE_URL;
+
+describe("replays with linked players", { skip: !DB && "set TEST_DATABASE_URL to run" }, () => {
+  let pool, svc;
+  const renderer = { queued: 0, render: async () => ({ video: Buffer.alloc(1), ms: 1 }) };
+
+  function feed(body, token = TOKEN) {
+    return fetch(`${svc.url}/replays/with`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+    });
+  }
+
+  before(async () => {
+    const pg = (await import("pg")).default;
+    pool = new pg.Pool({ connectionString: DB });
+    await pool.query(`TRUNCATE replays, maps, replay_cycle_days CASCADE`);
+    // cycle, id, players [name, guest]
+    const games = [
+      [5, 900, [["The Saucy Tulip", false]]], // an older cycle
+      [6, 10, [["Somebody", false], ["Else", false]]],
+      [6, 11, [["the saucy tulip", false], ["Else", false]]], // linked, different case
+      [6, 12, [["Tulip Alt", true]]], // a guest using a linked name: not them
+      [6, 13, [["Tulip Alt", false], ["Somepoop", false]]],
+      [6, 14, [["Nobody", false]]],
+    ];
+    for (const [cycle, id, players] of games) {
+      await pool.query(
+        `INSERT INTO replays (cycle, id, mapid, replaydata, fetched_at) VALUES ($1, $2, 10, '\\x00', NOW())`,
+        [cycle, id],
+      );
+      for (const [slot, [name, guest]] of players.entries()) {
+        await pool.query(
+          `INSERT INTO replay_participants (cycle, replay_id, slot, username, guest, level) VALUES ($1,$2,$3,$4,$5,1)`,
+          [cycle, id, slot, name, guest],
+        );
+      }
+    }
+    await pool.query(`INSERT INTO maps (mapid, version, name, author) VALUES (10, 1, 'Simple 1v1', 'Chaz')`);
+    svc = await serve(createRenderApp({ pool, renderer, token: TOKEN, distDir: root }));
+  });
+  after(async () => {
+    svc.close();
+    await pool.end();
+  });
+
+  const LINKED = ["The Saucy Tulip", "Tulip Alt"];
+
+  test("a new feed starts from the newest replay", async () => {
+    const body = await (await feed({ names: LINKED, after: null })).json();
+    assert.deepEqual(body, { replays: [], scanned_to: { cycle: 6, id: "14" }, more: false });
+  });
+
+  test("finds registered linked players after the cursor, oldest first, ignoring case", async () => {
+    const body = await (await feed({ names: LINKED, after: { cycle: 5, id: "900" } })).json();
+    assert.deepEqual(body.replays.map((r) => r.id), ["11", "13"]);
+    assert.equal(body.replays[0].mapname, "Simple 1v1");
+    assert.deepEqual(body.replays[1].players.map((p) => p.username), ["Tulip Alt", "Somepoop"]);
+    assert.deepEqual(body.scanned_to, { cycle: 6, id: "14" }); // skips past the rest
+    assert.equal(body.more, false);
+  });
+
+  test("a limit leaves the rest for next time", async () => {
+    const first = await (await feed({ names: LINKED, after: { cycle: 5, id: "0" }, limit: 1 })).json();
+    assert.deepEqual(first.replays.map((r) => `${r.cycle}:${r.id}`), ["5:900"]);
+    assert.equal(first.more, true);
+    assert.deepEqual(first.scanned_to, { cycle: 5, id: "900" });
+
+    const next = await (await feed({ names: LINKED, after: first.scanned_to, limit: 1 })).json();
+    assert.deepEqual(next.replays.map((r) => r.id), ["11"]);
+  });
+
+  test("nothing new keeps the cursor", async () => {
+    const body = await (await feed({ names: LINKED, after: { cycle: 6, id: "14" } })).json();
+    assert.deepEqual(body, { replays: [], scanned_to: { cycle: 6, id: "14" }, more: false });
+  });
+
+  test("problems", async () => {
+    assert.equal((await feed({ names: LINKED, after: null }, "nope")).status, 401);
+    assert.equal((await feed({ names: "x", after: null })).status, 400);
+    assert.equal((await feed({ names: LINKED, after: { cycle: 6, id: "x" } })).status, 400);
+  });
+});
