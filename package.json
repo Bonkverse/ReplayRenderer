@@ -2,7 +2,7 @@
   "name": "replay-renderer",
   "version": "0.1.0",
   "type": "module",
-  "description": "Deterministic bonk.io replay renderer \u2014 trail thumbnails + live playback.",
+  "description": "Deterministic bonk.io replay renderer — trail thumbnails + live playback.",
   "scripts": {
     "demo": "node server/demo-thumb.mjs",
     "build:core": "node server/build-core.mjs ./vendor/alpha2s.js ./vendor/bonk-core.mjs",
@@ -30,5 +30,8 @@
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "vite": "^8.1.0"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^23.11.1"
   }
 }
