@@ -240,7 +240,7 @@ const ENRICH_SQL = `
 const NEWEST = "cycle DESC, id DESC";
 const OLDEST = "cycle ASC, id ASC";
 
-async function enrichKeys(pool, keysSql, params, order = NEWEST) {
+export async function enrichKeys(pool, keysSql, params, order = NEWEST) {
   const result = await pool.query(
     `WITH keys AS (${keysSql}) ${ENRICH_SQL} ORDER BY ${order.replace(/(cycle|id)/g, "k.$1")}`,
     params
