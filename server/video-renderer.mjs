@@ -21,7 +21,16 @@ export const CHROME_ARGS = [
   "--disable-dev-shm-usage", // containers often have a tiny /dev/shm
 ];
 
-export const DEFAULT_VIDEO = { fps: 30, scale: 1, bitrate: 2_500_000 };
+// The same settings as the site's "Export MP4" (ReplayPlayer.exportReplayMp4),
+// so a Discord video looks like a site export: 1460×1000 at 60 fps. bonk.io
+// frames are simple, so a 15 s replay comes out ~6 MB even at 16 Mbps (tested
+// 2026-11-18), well under Discord's 20 MB. Each can be changed with
+// RENDER_SCALE / RENDER_FPS / RENDER_BITRATE.
+export const DEFAULT_VIDEO = {
+  scale: Number(process.env.RENDER_SCALE || 2),
+  fps: Number(process.env.RENDER_FPS || 60),
+  bitrate: Number(process.env.RENDER_BITRATE || 16_000_000),
+};
 
 export class RenderTimeout extends Error {}
 

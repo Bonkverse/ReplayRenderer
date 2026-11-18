@@ -8,7 +8,7 @@
 //   -> 200 {"replay": {id, cycle, map, author, mode, day, seconds, players:[...]},
 //           "video": {"mp4_base64", "bytes", "render_ms"}}
 //      400 bad_request · 401 unauthorized · 404 replay_not_found
-//      413 replay_too_long · 503 render_failed / render_timeout / db_unavailable
+//      413 replay_too_long / video_too_large · 503 render_failed / render_timeout / db_unavailable
 //   GET /health -> {"ok": true, "queued": n}
 //
 // It also serves the built frontend (dist/) so Chrome can open render.html
@@ -26,6 +26,19 @@ import { extractMeta, extractPlayers, modeLabel } from "../browser/app/format.js
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const MAX_FRAMES = 30 * 30; // 30 s; bonk.io replays are at most 15 s
+// Discord's upload limit is 20 MB; stay under it with room for the message.
+export const MAX_VIDEO_BYTES = Number(process.env.RENDER_MAX_BYTES || 19_000_000);
+// If a busy replay comes out too big, try once more at this bitrate.
+export const FALLBACK_BITRATE = 4_000_000;
+
+/** Render, re-rendering once at a lower bitrate if the file is too big for Discord. */
+export async function renderForDiscord(renderer, decoded) {
+  const first = await renderer.render(decoded);
+  if (first.video.length <= MAX_VIDEO_BYTES) return first;
+  console.warn(`render: ${first.video.length} bytes is over ${MAX_VIDEO_BYTES}; retrying at a lower bitrate`);
+  const second = await renderer.render(decoded, { bitrate: FALLBACK_BITRATE });
+  return { ...second, ms: first.ms + second.ms, tooBig: second.video.length > MAX_VIDEO_BYTES };
+}
 
 export function authorized(header, token) {
   if (!token) return false; // no token set: the service refuses everything
@@ -87,7 +100,8 @@ export function createRenderApp({ pool, renderer, token, distDir }) {
     }
 
     try {
-      const { video, ms } = await renderer.render(replay.decoded);
+      const { video, ms, tooBig } = await renderForDiscord(renderer, replay.decoded);
+      if (tooBig) return res.status(413).json({ error: "video_too_large" });
       console.log(`render: replay ${replay.cycle}:${replay.id} -> ${video.length} bytes in ${ms} ms`);
       return res.json({
         replay: summarize(replay),
