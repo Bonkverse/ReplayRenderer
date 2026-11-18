@@ -186,3 +186,35 @@ describe("real render in headless Chrome", { skip: !canRender && "needs Chrome a
     }
   });
 });
+
+describe("fitting Discord's upload limit", () => {
+  test("a video that's too big is re-rendered once at a lower bitrate", async () => {
+    const { renderForDiscord, MAX_VIDEO_BYTES, FALLBACK_BITRATE } = await import("../server/render-server.mjs");
+    const asked = [];
+    const sizes = [MAX_VIDEO_BYTES + 1, 1000];
+    const renderer = {
+      async render(_, options = {}) {
+        asked.push(options.bitrate ?? "default");
+        return { video: Buffer.alloc(sizes.shift()), ms: 10 };
+      },
+    };
+    const result = await renderForDiscord(renderer, {});
+    assert.deepEqual(asked, ["default", FALLBACK_BITRATE]);
+    assert.equal(result.video.length, 1000);
+    assert.equal(result.tooBig, false);
+    assert.equal(result.ms, 20);
+  });
+
+  test("a video that fits is rendered once", async () => {
+    const { renderForDiscord } = await import("../server/render-server.mjs");
+    let calls = 0;
+    const renderer = { async render() { calls += 1; return { video: Buffer.alloc(10), ms: 5 }; } };
+    await renderForDiscord(renderer, {});
+    assert.equal(calls, 1);
+  });
+
+  test("the defaults match the site's Export MP4", async () => {
+    const { DEFAULT_VIDEO } = await import("../server/video-renderer.mjs");
+    assert.deepEqual(DEFAULT_VIDEO, { scale: 2, fps: 60, bitrate: 16_000_000 });
+  });
+});
