@@ -11,6 +11,7 @@ import React, { createRef } from "react";
 import { createRoot } from "react-dom/client";
 import box2d from "../vendor/box2d.esm.js";
 import ReplayPlayer from "./ReplayPlayer.jsx";
+import { loadBonkFonts } from "./app/fonts.js";
 import "./globals.js";
 
 const identityDecode = (x) => x;
@@ -35,6 +36,9 @@ async function waitFor(check, timeoutMs) {
 
 window.renderReplay = async (decoded, options = {}) => {
   const started = performance.now();
+  // Same as the watch page: without bonk.io's fonts, names are drawn in a
+  // fallback serif font (blurrier and not what the game shows).
+  await loadBonkFonts();
   const ref = createRef();
   root.render(
     <ReplayPlayer ref={ref} blob={decoded} box2d={box2d} decodeReplayData={identityDecode} />
