@@ -84,7 +84,11 @@ function useAccount() {
   return account;
 }
 
-export function SiteHeader() {
+/**
+ * inApp: on the React app the Replays link moves within the app; on a plain
+ * page (about/dates.html) it is an ordinary link.
+ */
+export function SiteHeader({ inApp = true }) {
   const account = useAccount();
   const here = typeof location === "undefined" ? SITE : location.href;
 
@@ -134,8 +138,9 @@ export function SiteHeader() {
                   <a
                     className="bv-header__link"
                     href="/"
-                    aria-current="page"
+                    aria-current={inApp ? "page" : "true"}
                     onClick={(e) => {
+                      if (!inApp) return;
                       e.preventDefault();
                       navigate("/");
                     }}
