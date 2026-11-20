@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
+import nav from "@bonkverse/ui/nav.json";
+import logoUrl from "@bonkverse/ui/img/logo.png";
 import { thumbnailUrl } from "./api.js";
 import { navigate, watchUrl, saveListPosition } from "./router.js";
 import {
@@ -9,14 +11,13 @@ import {
   ESTIMATED_DATE_NOTE,
 } from "./format.js";
 
-// Main-site links (the shared Bonkverse header). Absolute URLs: the replay
-// site is its own service on replays.bonkverse.io.
+// The shared Bonkverse header and footer, built from Bonkverse/ui's nav.json
+// so every site shows the same links. Paths starting with / are on
+// bonkverse.io; the replay site is its own service on replays.bonkverse.io.
 const SITE = "https://bonkverse.io";
-export const LINKS = {
-  home: `${SITE}/`,
-  skins: `${SITE}/search/`,
-  community: `${SITE}/players_search/players/`,
-};
+const THIS_SITE = "replays.bonkverse.io";
+const siteHref = (href) => (href.startsWith("/") ? SITE + href : href);
+const isExternal = (href) => !href.startsWith("/") && !href.startsWith(SITE);
 
 export const SCOPES = [
   ["all", "All"],
@@ -28,35 +29,208 @@ export const SCOPES = [
 ];
 export const scopeLabel = (v) => SCOPES.find(([k]) => k === v)?.[1] ?? "All";
 
-// ─── Global header ─────────────────────────────────────────────────────────
+// ─── Global header and footer ────────────────────────────────────────────
+
+const THEMES = [
+  ["bonkverse", "Bonkverse"],
+  ["light", "Bonkverse Light"],
+  ["dark", "Bonkverse Dark"],
+];
+
+// Lucide icons (ISC licence), inline because this site doesn't load Lucide.
+function Icon({ name }) {
+  const paths = {
+    menu: <path d="M4 6h16M4 12h16M4 18h16" />,
+    chevron: <path d="m6 9 6 6 6-6" />,
+    user: (
+      <>
+        <circle cx="12" cy="12" r="10" />
+        <circle cx="12" cy="10" r="3" />
+        <path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662" />
+      </>
+    ),
+  };
+  return (
+    <svg
+      className="lucide"
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {paths[name]}
+    </svg>
+  );
+}
+
+/** Who is signed in on bonkverse.io (its session cookie covers .bonkverse.io). */
+function useAccount() {
+  const [account, setAccount] = useState(null);
+  useEffect(() => {
+    let live = true;
+    fetch(`${SITE}/api/me/`, { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => live && data?.authenticated && setAccount(data.user))
+      .catch(() => null); // signed out, offline or not allowed: show Log in
+    return () => {
+      live = false;
+    };
+  }, []);
+  return account;
+}
 
 export function SiteHeader() {
+  const account = useAccount();
+  const here = typeof location === "undefined" ? SITE : location.href;
+
   return (
-    <header className="site-header">
-      <div className="site-header__inner">
-        <a className="brand" href={LINKS.home}>
-          <img className="brand__mark" src="/brand/planet.png" alt="" width="32" height="32" />
-          <span className="brand__name">Bonkverse</span>
+    <header className="bv-header">
+      <div className="bv-header__inner">
+        <a className="bv-header__brand" href={nav.brand.href}>
+          <img src={logoUrl} alt="" width="30" height="30" />
+          <span>{nav.brand.label}</span>
         </a>
-        <nav className="site-nav" aria-label="Bonkverse">
-          <a href={LINKS.skins}>Skins</a>
-          <a
-            href="/"
-            aria-current="page"
-            className="is-active"
-            onClick={(e) => {
-              e.preventDefault();
-              navigate("/");
-            }}
-          >
-            Replays
-          </a>
-          <a className="site-nav__community" href={LINKS.community}>
-            Community
-          </a>
+
+        <button
+          className="bv-btn bv-btn--icon bv-header__menu-btn"
+          type="button"
+          aria-expanded="false"
+          aria-controls="bv-nav"
+          aria-label="Menu"
+          data-bv-toggle=""
+        >
+          <Icon name="menu" />
+        </button>
+
+        <nav className="bv-header__nav" id="bv-nav" aria-label="Bonkverse">
+          <ul className="bv-header__links">
+            {nav.header.map((item) => (
+              <li key={item.id}>
+                {item.items ? (
+                  <>
+                    <button
+                      className="bv-header__link"
+                      type="button"
+                      aria-expanded="false"
+                      aria-controls={`bv-nav-${item.id}`}
+                      data-bv-toggle=""
+                    >
+                      {item.label} <Icon name="chevron" />
+                    </button>
+                    <div className="bv-menu" id={`bv-nav-${item.id}`} hidden>
+                      {item.items.map((sub) => (
+                        <a className="bv-menu__item" key={sub.href} href={siteHref(sub.href)}>
+                          {sub.label}
+                        </a>
+                      ))}
+                    </div>
+                  </>
+                ) : item.site === THIS_SITE ? (
+                  <a
+                    className="bv-header__link"
+                    href="/"
+                    aria-current="page"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      navigate("/");
+                    }}
+                  >
+                    {item.label}
+                  </a>
+                ) : (
+                  <a className="bv-header__link" href={siteHref(item.href)}>
+                    {item.label}
+                  </a>
+                )}
+              </li>
+            ))}
+          </ul>
+
+          <div className="bv-header__end">
+            <label className="bv-theme-picker">
+              <span>Theme</span>
+              <select data-bv-theme-picker="" defaultValue={window.BonkverseTheme?.get() ?? "bonkverse"}>
+                {THEMES.map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {account ? (
+              <div className="bv-dropdown bv-header__account">
+                <a className="bv-header__link" href={`${SITE}/player/${encodeURIComponent(account.username)}/`}>
+                  <Icon name="user" />
+                  <span className="bv-header__account-name">{account.username}</span>
+                </a>
+                <button
+                  className="bv-header__link"
+                  type="button"
+                  aria-label="Account menu"
+                  aria-expanded="false"
+                  aria-controls="bv-account"
+                  data-bv-toggle=""
+                >
+                  <Icon name="chevron" />
+                </button>
+                <div className="bv-menu bv-menu--end" id="bv-account" hidden>
+                  {/* Log out is a POST with bonkverse.io's CSRF token, so it
+                      lives on bonkverse.io's own menu. */}
+                  {nav.account.items
+                    .filter((item) => item.method !== "post")
+                    .map((item) => (
+                      <a className="bv-menu__item" key={item.href} href={siteHref(item.href)}>
+                        {item.label}
+                      </a>
+                    ))}
+                </div>
+              </div>
+            ) : (
+              <a
+                className="bv-header__link bv-header__login"
+                href={`${siteHref(nav.account.signedOut.href)}?next=${encodeURIComponent(here)}`}
+              >
+                {nav.account.signedOut.label}
+              </a>
+            )}
+          </div>
         </nav>
       </div>
     </header>
+  );
+}
+
+export function SiteFooter({ children }) {
+  return (
+    <footer className="bv-footer">
+      <div className="bv-footer__inner">
+        {nav.footer.map((column) => (
+          <div key={column.title}>
+            <h2>{column.title}</h2>
+            <ul>
+              {column.items.map((link) => (
+                <li key={link.href}>
+                  <a
+                    href={siteHref(link.href)}
+                    {...(isExternal(link.href) ? { target: "_blank", rel: "noopener" } : {})}
+                  >
+                    {link.label}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+        {children}
+        <p className="bv-footer__note">{nav.note}</p>
+      </div>
+    </footer>
   );
 }
 

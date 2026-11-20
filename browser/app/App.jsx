@@ -1,6 +1,6 @@
 import React from "react";
 import { useRoute } from "./router.js";
-import { SiteHeader } from "./components.jsx";
+import { SiteHeader, SiteFooter } from "./components.jsx";
 import { ABOUT_DATES_URL } from "./format.js";
 import Home from "./pages/Home.jsx";
 import Search from "./pages/Search.jsx";
@@ -11,7 +11,7 @@ export default function App() {
 
   return (
     <div className="app">
-      <a className="skip-link" href="#main">
+      <a className="bv-skip-link" href="#main">
         Skip to content
       </a>
       <SiteHeader />
@@ -22,9 +22,16 @@ export default function App() {
       ) : (
         <Home />
       )}
-      <footer className="site-footer">
-        <a href={ABOUT_DATES_URL}>About replay dates</a>
-      </footer>
+      <SiteFooter>
+        <div>
+          <h2>Replays</h2>
+          <ul>
+            <li>
+              <a href={ABOUT_DATES_URL}>About replay dates</a>
+            </li>
+          </ul>
+        </div>
+      </SiteFooter>
     </div>
   );
 }
