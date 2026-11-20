@@ -68,7 +68,10 @@ function Icon({ name }) {
   );
 }
 
-/** Who is signed in on bonkverse.io (its session cookie covers .bonkverse.io). */
+/**
+ * Who is signed in on bonkverse.io (its session cookie covers .bonkverse.io):
+ * { username, avatar } where avatar is their worn skin's picture or null.
+ */
 function useAccount() {
   const [account, setAccount] = useState(null);
   useEffect(() => {
@@ -171,7 +174,15 @@ export function SiteHeader({ inApp = true }) {
             {account ? (
               <div className="bv-dropdown bv-header__account">
                 <a className="bv-header__link" href={`${SITE}/player/${encodeURIComponent(account.username)}/`}>
-                  <Icon name="user" />
+                  {account.avatar ? (
+                    // Their worn skin, as on bonkverse.io's header; the icon
+                    // underneath shows if the picture can't load.
+                    <span className="site-nav-avatar" style={{ "--skin": `url("${account.avatar}")` }} aria-hidden="true">
+                      <Icon name="user" />
+                    </span>
+                  ) : (
+                    <Icon name="user" />
+                  )}
                   <span className="bv-header__account-name">{account.username}</span>
                 </a>
                 <button
