@@ -1,0 +1,60 @@
+/* The About replay dates page (about/dates.html). Bonkverse/ui supplies
+ * the type, tables, pills and notice; this only sets the reading column
+ * and the space between sections, with tokens only. */
+
+body {
+  display: flex;
+  flex-direction: column;
+}
+
+body > #site-footer {
+  margin-top: auto;
+}
+
+.about {
+  width: 100%;
+  max-width: 760px;
+  padding-bottom: 48px;
+}
+
+.about h1 {
+  margin: 12px 0 8px;
+}
+
+.about h2 {
+  margin: 40px 0 12px;
+}
+
+.about p {
+  margin: 0 0 12px;
+  line-height: 1.6;
+}
+
+.about .bv-lead {
+  margin-bottom: 8px;
+}
+
+.about .bv-notice p {
+  margin: 0;
+}
+
+.about .bv-table-wrap {
+  margin: 12px 0;
+}
+
+.about .bv-num {
+  white-space: nowrap;
+}
+
+.about ul {
+  padding-left: 20px;
+}
+
+.about li {
+  margin: 6px 0;
+}
+
+.about__note {
+  color: var(--bv-muted);
+  font-size: var(--bv-text-sm);
+}
