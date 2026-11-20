@@ -47,7 +47,7 @@ export function formatClock(sec) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-// Explainer for estimated dates (public/about/dates.html).
+// Explainer for estimated dates (about/dates.html, a page of its own).
 export const ABOUT_DATES_URL = "/about/dates.html";
 export const ESTIMATED_DATE_NOTE =
   "Estimated from the replay ID, using cycle date estimates by Salama & " +
