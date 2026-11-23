@@ -223,7 +223,6 @@ h3 {
   border-color: var(--accent);
   color: var(--text);
   background: var(--accent-tint);
-  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .chip--removable span {
@@ -235,7 +234,8 @@ h3 {
   margin-left: 6px;
   padding: 1px 6px;
   border-radius: 999px;
-  border: 1px solid var(--outline);
+  border: 1px solid transparent;
+  background: var(--bv-inset);
   color: var(--muted);
   font-size: 11px;
   font-weight: 500;
@@ -448,7 +448,7 @@ h3 {
   aspect-ratio: 73 / 50; /* bonk's 730x500 arena */
   object-fit: cover;
   background: var(--bv-thumb);
-  border: 1px solid var(--outline);
+  border: 1px solid transparent;
   border-radius: 10px;
 }
 
@@ -487,7 +487,7 @@ h3 {
 }
 
 .card__link:hover .thumb {
-  border-color: var(--accent);
+  filter: brightness(1.08);
 }
 
 /* Compact list version (watch page sidebar) */
@@ -551,7 +551,7 @@ h3 {
   min-height: 40px;
   padding: 0 12px;
   border-radius: var(--radius-control);
-  border: 1px solid var(--outline);
+  border: 1px solid var(--control);
   background: var(--panel);
   font-weight: 500;
   font-size: 14px;
@@ -682,7 +682,6 @@ a.row__link:hover .row__map {
 .pager__btn.is-current {
   background: var(--accent-tint);
   border-color: var(--accent);
-  box-shadow: inset 0 0 0 1px var(--accent);
   color: var(--text);
   cursor: default;
 }
@@ -726,7 +725,7 @@ a.row__link:hover .row__map {
   height: 40px;
   padding: 0 10px;
   border-radius: var(--radius-control);
-  border: 1px solid var(--outline);
+  border: 1px solid var(--control);
   background: var(--inset);
   color: var(--text);
   font-size: 16px; /* no iOS zoom */
@@ -779,7 +778,8 @@ a.row__link:hover .row__map {
   flex-direction: column;
   max-height: calc(100vh - var(--header-h) - 32px);
   background: var(--panel);
-  border: 1px solid var(--outline);
+  border: 1px solid transparent;
+  box-shadow: var(--bv-card-shadow);
   border-radius: var(--radius-panel);
 }
 
@@ -855,7 +855,7 @@ a.row__link:hover .row__map {
   min-height: 42px;
   padding: 0 12px;
   border-radius: var(--radius-control);
-  border: 1px solid var(--outline);
+  border: 1px solid var(--control);
   background: var(--inset);
   font-size: 16px;
 }
@@ -922,7 +922,7 @@ a.row__link:hover .row__map {
   min-height: 38px;
   padding: 0 12px;
   border-radius: var(--radius-control);
-  border: 1px solid var(--outline);
+  border: 1px solid var(--control);
   background: var(--inset);
   font-weight: 500;
   font-size: 13px;
@@ -933,7 +933,6 @@ a.row__link:hover .row__map {
   border-color: var(--accent);
   color: var(--text);
   background: var(--accent-tint);
-  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 /* ─── Watch page ──────────────────────────────────────────────────────────── */
@@ -993,7 +992,8 @@ a.row__link:hover .row__map {
   display: flex;
   justify-content: center;
   background: var(--stage);
-  border: 1px solid var(--outline);
+  border: 1px solid transparent;
+  box-shadow: var(--bv-card-shadow);
   border-radius: var(--radius-panel);
   overflow: hidden;
 }
@@ -1040,7 +1040,8 @@ a.row__link:hover .row__map {
 
 .panel {
   background: var(--panel);
-  border: 1px solid var(--outline);
+  border: 1px solid transparent;
+  box-shadow: var(--bv-card-shadow);
   border-radius: var(--radius-panel);
 }
 
@@ -1250,7 +1251,7 @@ a.row__link:hover .row__map {
   overflow: auto;
   padding: 14px;
   background: var(--inset);
-  border: 1px solid var(--outline);
+  border: 1px solid transparent;
   border-radius: 10px;
   font-family: var(--font-mono);
   font-size: 12px;
@@ -1276,7 +1277,7 @@ a.row__link:hover .row__map {
   min-width: 220px;
   padding: 6px;
   background: var(--panel-2);
-  border: 1px solid var(--outline);
+  border: 1px solid transparent;
   border-radius: 10px;
   box-shadow: var(--bv-shadow);
 }
@@ -1826,7 +1827,8 @@ body.no-scroll {
   margin: -4px 0 12px;
   padding: 10px 14px;
   background: var(--panel);
-  border: 1px solid var(--outline);
+  border: 1px solid transparent;
+  box-shadow: var(--bv-card-shadow);
   border-radius: var(--radius-panel);
   overflow: hidden;
   position: relative;
@@ -1915,15 +1917,10 @@ body.no-scroll {
   padding: 2px 8px;
   border-radius: 999px;
   background: var(--accent-tint);
-  border: 1px solid var(--accent);
+  border: 1px solid transparent;
   color: var(--text);
   font-size: 12px;
   font-weight: 500;
-}
-
-.card.is-new .thumb {
-  border-color: var(--accent);
-  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 @keyframes bv-pulse {
@@ -1968,7 +1965,8 @@ body.no-scroll {
   margin-top: 16px;
   padding: 20px;
   border-radius: var(--radius-panel);
-  border: 1px solid var(--outline);
+  border: 1px solid transparent;
+  box-shadow: var(--bv-card-shadow);
   background: var(--panel);
 }
 
@@ -2008,8 +2006,8 @@ body.no-scroll {
   gap: 8px;
   padding: 8px;
   border-radius: 10px;
-  border: 1px solid var(--outline);
-  background: var(--inset);
+  border: 1px solid transparent;
+  background: var(--bv-inset);
 }
 
 .qb__rule:focus-within {
@@ -2042,7 +2040,7 @@ body.no-scroll {
   box-sizing: border-box;
   padding: 0 12px;
   border-radius: var(--radius-control);
-  border: 1px solid var(--outline);
+  border: 1px solid var(--control);
   background: var(--panel-2);
   color: var(--text);
   font-size: 15px;
@@ -2129,7 +2127,7 @@ body.no-scroll {
   height: 40px;
   box-sizing: border-box;
   border-radius: var(--radius-control);
-  border: 1px solid var(--outline);
+  border: 1px solid var(--control);
   color: var(--muted);
   font-weight: 700;
   font-size: 14px;
@@ -2226,7 +2224,7 @@ body.no-scroll {
 
 .qb__example:hover {
   border-style: solid;
-  border-color: var(--accent);
+  border-color: var(--text);
   color: var(--accent);
 }
 
