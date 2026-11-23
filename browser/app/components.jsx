@@ -42,6 +42,15 @@ function Icon({ name }) {
   const paths = {
     menu: <path d="M4 6h16M4 12h16M4 18h16" />,
     chevron: <path d="m6 9 6 6 6-6" />,
+    palette: (
+      <>
+        <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.93 0 1.65-.75 1.65-1.69 0-.44-.18-.84-.44-1.13-.29-.29-.44-.65-.44-1.13a1.64 1.64 0 0 1 1.67-1.67h2c3.05 0 5.55-2.5 5.55-5.55C21.97 6.01 17.46 2 12 2z" />
+        <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
+        <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
+        <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
+        <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
+      </>
+    ),
     user: (
       <>
         <circle cx="12" cy="12" r="10" />
@@ -160,16 +169,45 @@ export function SiteHeader({ inApp = true }) {
           </ul>
 
           <div className="bv-header__end">
-            <label className="bv-theme-picker">
-              <span>Theme</span>
-              <select data-bv-theme-picker="" defaultValue={window.BonkverseTheme?.get() ?? "bonkverse"}>
-                {THEMES.map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {/* Appearance: the theme and, in season, the seasonal switch
+                (Bonkverse/ui). theme.js shares the choice with every
+                Bonkverse site; bonkverse.io also saves it to the account. */}
+            <div className="bv-dropdown bv-appearance">
+              <button
+                className="bv-header__link"
+                type="button"
+                aria-expanded="false"
+                aria-controls="bv-appearance"
+                data-bv-toggle=""
+              >
+                <Icon name="palette" />
+                <span className="bv-appearance__label bv-visually-hidden">Appearance</span>
+              </button>
+              <div className="bv-menu bv-menu--end bv-appearance__menu" id="bv-appearance" hidden>
+                <label className="bv-appearance__field">
+                  <span>Theme</span>
+                  <select
+                    className="bv-input bv-select"
+                    data-bv-theme-picker=""
+                    defaultValue={window.BonkverseTheme?.get() ?? "bonkverse"}
+                  >
+                    {THEMES.map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="bv-season-toggle">
+                  <input
+                    type="checkbox"
+                    data-bv-season-toggle=""
+                    defaultChecked={window.BonkverseTheme?.season?.() != null}
+                  />{" "}
+                  <span>Seasonal theme</span>
+                </label>
+              </div>
+            </div>
 
             {account ? (
               <div className="bv-dropdown bv-header__account">

@@ -40,6 +40,11 @@
   --header-h: var(--bv-header-height);
 }
 
+/* Christmas gives the header a berry red; the arena stays near black. */
+[data-bv-season="christmas"] {
+  --stage: color-mix(in srgb, var(--bv-header) 30%, black);
+}
+
 html {
   scroll-padding-top: calc(var(--header-h) + 12px);
 }

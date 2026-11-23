@@ -6,6 +6,7 @@ import { SiteHeader, SiteFooter } from "./app/components.jsx";
 import "@bonkverse/ui/tokens.css";
 import "@bonkverse/ui/base.css";
 import "@bonkverse/ui/components.css";
+import "@bonkverse/ui/seasons.css";
 import "@bonkverse/ui/ui.js";
 import "./about.css";
 
