@@ -19,7 +19,7 @@
     "start:render": "node server/render-server.mjs"
   },
   "dependencies": {
-    "@bonkverse/ui": "https://github.com/Bonkverse/ui/archive/refs/tags/v0.1.5.tar.gz",
+    "@bonkverse/ui": "https://github.com/Bonkverse/ui/archive/refs/tags/v0.1.6.tar.gz",
     "@napi-rs/canvas": "^0.1.0",
     "@vitejs/plugin-react": "^6.0.3",
     "bytebuffer": "^5.0.1",
