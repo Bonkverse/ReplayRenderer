@@ -170,6 +170,16 @@ export function SiteHeader({ inApp = true }) {
                 ))}
               </select>
             </label>
+            {/* Shown only while a season is on (Bonkverse/ui seasons.css); the
+                choice is shared with every Bonkverse site. */}
+            <label className="bv-season-toggle">
+              <input
+                type="checkbox"
+                data-bv-season-toggle=""
+                defaultChecked={window.BonkverseTheme?.season?.() != null}
+              />{" "}
+              <span>Seasonal theme</span>
+            </label>
 
             {account ? (
               <div className="bv-dropdown bv-header__account">
