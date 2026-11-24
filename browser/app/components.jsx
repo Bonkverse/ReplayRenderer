@@ -1,5 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
 import nav from "@bonkverse/ui/nav.json";
+import {
+  getMe,
+  otherAccounts,
+  switchAccount,
+  addAccountHref,
+  signInHref,
+} from "@bonkverse/ui/account.mjs";
 import logoUrl from "@bonkverse/ui/img/logo.png";
 import { thumbnailUrl } from "./api.js";
 import { navigate, watchUrl, saveListPosition } from "./router.js";
@@ -78,22 +85,96 @@ function Icon({ name }) {
 }
 
 /**
- * Who is signed in on bonkverse.io (its session cookie covers .bonkverse.io):
- * { username, avatar } where avatar is their worn skin's picture or null.
+ * Who is signed in on bonkverse.io (its session cookie covers .bonkverse.io),
+ * from Bonkverse/ui's account.mjs: { user: { username, avatar }, accounts }
+ * where accounts are the person's bonk.io accounts (RFC-0003 phase 5), or
+ * null when signed out.
  */
 function useAccount() {
-  const [account, setAccount] = useState(null);
+  const [me, setMe] = useState(null);
   useEffect(() => {
     let live = true;
-    fetch(`${SITE}/api/me/`, { credentials: "include" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => live && data?.authenticated && setAccount(data.user))
-      .catch(() => null); // signed out, offline or not allowed: show Log in
+    getMe().then((found) => live && setMe(found));
     return () => {
       live = false;
     };
   }, []);
-  return account;
+  return me;
+}
+
+/** A bonk.io account's picture: its worn skin, else the user icon. */
+function AccountAvatar({ avatar }) {
+  return avatar ? (
+    // The icon underneath shows if the picture can't load.
+    <span className="site-nav-avatar" style={{ "--skin": `url("${avatar}")` }} aria-hidden="true">
+      <Icon name="user" />
+    </span>
+  ) : (
+    <Icon name="user" />
+  );
+}
+
+/**
+ * The person's other bonk.io accounts at the top of the account menu. Those
+ * signed in on this browser switch in place (bonkverse.io's session covers
+ * this site too, so the page reloads as the new account); the others go to
+ * bonkverse.io's login with their name filled in.
+ */
+function AccountSwitcher({ me, here }) {
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  const others = otherAccounts(me);
+  if (!others.length) return null;
+
+  const pick = async (account) => {
+    if (busy) return;
+    setBusy(true);
+    setMessage("");
+    const result = await switchAccount(account.id);
+    if (result.ok) {
+      location.reload();
+      return;
+    }
+    setBusy(false);
+    setMessage(result.message);
+  };
+
+  return (
+    <>
+      <div className="bv-menu__label">Switch account</div>
+      {others.map((account) =>
+        account.signed_in ? (
+          <button
+            className="bv-menu__item"
+            type="button"
+            key={account.id}
+            disabled={busy}
+            onClick={() => pick(account)}
+          >
+            <Icon name="user" />
+            <span className="bv-menu__text">{account.username}</span>
+            {!account.connected && (
+              <span className="bv-menu__badge" title="Wear will ask for this account's bonk.io password">
+                Not connected
+              </span>
+            )}
+          </button>
+        ) : (
+          <a className="bv-menu__item" key={account.id} href={signInHref(account.username, here)}>
+            <Icon name="user" />
+            <span className="bv-menu__text">{account.username}</span>
+            <span className="bv-menu__badge">Sign in</span>
+          </a>
+        ),
+      )}
+      {message && (
+        <p className="bv-menu__label" role="status">
+          {message}
+        </p>
+      )}
+      <div className="bv-menu__divider"></div>
+    </>
+  );
 }
 
 /**
@@ -101,7 +182,8 @@ function useAccount() {
  * page (about/dates.html) it is an ordinary link.
  */
 export function SiteHeader({ inApp = true }) {
-  const account = useAccount();
+  const me = useAccount();
+  const account = me?.user ?? null;
   const here = typeof location === "undefined" ? SITE : location.href;
 
   return (
@@ -212,15 +294,8 @@ export function SiteHeader({ inApp = true }) {
             {account ? (
               <div className="bv-dropdown bv-header__account">
                 <a className="bv-header__link" href={`${SITE}/player/${encodeURIComponent(account.username)}/`}>
-                  {account.avatar ? (
-                    // Their worn skin, as on bonkverse.io's header; the icon
-                    // underneath shows if the picture can't load.
-                    <span className="site-nav-avatar" style={{ "--skin": `url("${account.avatar}")` }} aria-hidden="true">
-                      <Icon name="user" />
-                    </span>
-                  ) : (
-                    <Icon name="user" />
-                  )}
+                  {/* Their worn skin, as on bonkverse.io's header. */}
+                  <AccountAvatar avatar={account.avatar} />
                   <span className="bv-header__account-name">{account.username}</span>
                 </a>
                 <button
@@ -234,12 +309,17 @@ export function SiteHeader({ inApp = true }) {
                   <Icon name="chevron" />
                 </button>
                 <div className="bv-menu bv-menu--end" id="bv-account" hidden>
+                  <AccountSwitcher me={me} here={here} />
                   {/* Log out is a POST with bonkverse.io's CSRF token, so it
                       lives on bonkverse.io's own menu. */}
                   {nav.account.items
                     .filter((item) => item.method !== "post")
                     .map((item) => (
-                      <a className="bv-menu__item" key={item.href} href={siteHref(item.href)}>
+                      <a
+                        className="bv-menu__item"
+                        key={item.href}
+                        href={item.id === "add-account" ? addAccountHref(here) : siteHref(item.href)}
+                      >
                         {item.label}
                       </a>
                     ))}
