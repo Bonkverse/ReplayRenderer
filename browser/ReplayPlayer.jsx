@@ -981,6 +981,8 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
   useImperativeHandle(ref, () => ({
     exportMp4: (options) => exportReplayMp4(options),
     exportGif: () => exportReplayGif(),
+    // True once the replay is loaded and simulated enough to export.
+    isReady: () => ready && !!engine.current,
     // Current playhead in seconds, for "share at this moment" links.
     getTime: () => (engine.current?.playhead ?? 0) / STEPS_PER_SEC,
   }));

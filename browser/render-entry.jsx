@@ -52,7 +52,10 @@ window.renderReplay = async (decoded, options = {}) => {
   const failed = new Promise((_, reject) => {
     window.alert = (msg) => reject(new Error(String(msg)));
   });
-  await new Promise((r) => setTimeout(r, 500)); // let the player finish its setup
+  // Wait for the player to finish loading the replay. A fixed delay wasn't
+  // always enough (e.g. slower machines), and exporting too early fell back
+  // to the canvas-recording path, which fails with "No replay canvas found".
+  await waitFor(() => ref.current?.isReady?.(), 30_000);
   ref.current.exportMp4(options);
   const blob = await Promise.race([video, failed]);
   return { base64: await blobToBase64(blob), bytes: blob.size, ms: Math.round(performance.now() - started) };
