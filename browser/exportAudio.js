@@ -149,12 +149,6 @@ export async function mixSounds(events, buffers, seconds) {
   return mix;
 }
 
-/** Silence, for when mixing fails after the muxer already has an audio track. */
-export function silence(seconds) {
-  const length = Math.max(1, Math.ceil(seconds * SAMPLE_RATE));
-  return new AudioBuffer({ length, numberOfChannels: CHANNELS, sampleRate: SAMPLE_RATE });
-}
-
 /** Encode an AudioBuffer and pass each chunk to `onChunk(chunk, meta)`. */
 export async function encodeAudio(buffer, codec, onChunk) {
   let failure = null;

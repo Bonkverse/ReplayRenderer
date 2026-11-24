@@ -8,7 +8,6 @@ import {
   prepareExportAudio,
   createSoundRecorder,
   mixSounds,
-  silence,
   encodeAudio,
   SAMPLE_RATE,
 } from "./exportAudio.js";
@@ -389,16 +388,12 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
 
       const exportCanvas = handler.renderer.view;
 
-      const muxer = new Muxer({
-        target: new ArrayBufferTarget(),
-        video: { codec: "avc", width: W, height: H },
-        ...(sound && {
-          audio: { codec: sound.codec.muxer, numberOfChannels: 2, sampleRate: SAMPLE_RATE },
-        }),
-        fastStart: "in-memory",
-      });
+      // Video chunks are held until the audio is done, so the MP4 only gets
+      // an audio track if the audio actually encoded. If anything about the
+      // sound fails, the export still succeeds, just silent (as before).
+      const videoChunks = [];
       const encoder = new VideoEncoder({
-        output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+        output: (chunk, meta) => videoChunks.push([chunk, meta]),
         error: (err) => console.error("encoder", err),
       });
       encoder.configure({
@@ -427,6 +422,12 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
       // never replace it mid-export.
       let videoTime = 0;
       const recorder = sound && createSoundRecorder({ now: () => videoTime, buffers: sound.buffers });
+      // At fps above 30 a step is drawn more than once. Bonk's own game clears
+      // a step's sounds after drawing it, but this player keeps them (for
+      // scrubbing), so sounds with no step number (capture zones, map
+      // collisions) would play on every draw. Only record a step's first draw.
+      const noSound = { playSound() {}, resetSumVols() {} };
+      let lastSoundStep = -1;
 
       for (let f = 0; f < totalFrames; f++) {
         performance.__v = f * frameMs; // virtual time for THIS frame
@@ -439,7 +440,10 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
         if (cur) {
           const prev = e.steps[Math.max(0, whole - 1)] ?? cur;
           const liveSoundManager = core.game.soundManager;
-          if (recorder) core.game.soundManager = recorder;
+          if (recorder) {
+            core.game.soundManager = whole !== lastSoundStep ? recorder : noSound;
+            lastSoundStep = whole;
+          }
           try {
             handler.render(
               prev,
@@ -467,20 +471,30 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
 
       await encoder.flush();
 
+      let audioChunks = null;
       if (sound) {
-        const seconds = (totalFrames * frameMs) / 1000;
-        let mix;
         try {
-          mix = await mixSounds(recorder.events, sound.buffers, seconds);
+          const seconds = (totalFrames * frameMs) / 1000;
+          const mix = await mixSounds(recorder.events, sound.buffers, seconds);
+          const chunks = [];
+          await encodeAudio(mix, sound.codec, (chunk, meta) => chunks.push([chunk, meta]));
+          audioChunks = chunks;
+          console.info(`MP4 export: ${recorder.events.length} sounds, ${sound.codec.muxer} audio`);
         } catch (err) {
-          // The muxer already expects an audio track, so give it silence.
-          console.warn("MP4 export: mixing audio failed; the video will be silent.", err);
-          mix = silence(seconds);
+          console.warn("MP4 export: audio failed; exporting video only.", err);
         }
-        await encodeAudio(mix, sound.codec, (chunk, meta) => muxer.addAudioChunk(chunk, meta));
-        console.info(`MP4 export: ${recorder.events.length} sounds, ${sound.codec.muxer} audio`);
       }
 
+      const muxer = new Muxer({
+        target: new ArrayBufferTarget(),
+        video: { codec: "avc", width: W, height: H },
+        ...(audioChunks && {
+          audio: { codec: sound.codec.muxer, numberOfChannels: 2, sampleRate: SAMPLE_RATE },
+        }),
+        fastStart: "in-memory",
+      });
+      for (const [chunk, meta] of videoChunks) muxer.addVideoChunk(chunk, meta);
+      for (const [chunk, meta] of audioChunks ?? []) muxer.addAudioChunk(chunk, meta);
       muxer.finalize();
 
       const blob = new Blob([muxer.target.buffer], { type: "video/mp4" });
