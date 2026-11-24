@@ -102,7 +102,9 @@ function useAccount() {
   return me;
 }
 
-/** A bonk.io account's picture: its worn skin, else the user icon. */
+/** A bonk.io account's picture: its worn skin (`avatar` from /api/me/, for
+ * the signed-in account and, since Bonkverse/bonkverse#178, each account in
+ * the switcher), else the user icon. */
 function AccountAvatar({ avatar }) {
   return avatar ? (
     // The icon underneath shows if the picture can't load.
@@ -110,7 +112,10 @@ function AccountAvatar({ avatar }) {
       <Icon name="user" />
     </span>
   ) : (
-    <Icon name="user" />
+    // Same box as a picture, so names line up in the switcher.
+    <span className="site-nav-avatar" aria-hidden="true">
+      <Icon name="user" />
+    </span>
   );
 }
 
@@ -151,7 +156,7 @@ function AccountSwitcher({ me, here }) {
             disabled={busy}
             onClick={() => pick(account)}
           >
-            <Icon name="user" />
+            <AccountAvatar avatar={account.avatar} />
             <span className="bv-menu__text">{account.username}</span>
             {!account.connected && (
               <span className="bv-menu__badge" title="Wear will ask for this account's bonk.io password">
@@ -161,7 +166,7 @@ function AccountSwitcher({ me, here }) {
           </button>
         ) : (
           <a className="bv-menu__item" key={account.id} href={signInHref(account.username, here)}>
-            <Icon name="user" />
+            <AccountAvatar avatar={account.avatar} />
             <span className="bv-menu__text">{account.username}</span>
             <span className="bv-menu__badge">Sign in</span>
           </a>
