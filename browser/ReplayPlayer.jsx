@@ -4,6 +4,14 @@ import { normalizeReplay } from "../core/decode.js";
 import { createInputResolver } from "../core/inputs.js";
 import { Muxer, ArrayBufferTarget } from "mp4-muxer";
 import { GIFEncoder, quantize, applyPalette } from "gifenc";
+import {
+  prepareExportAudio,
+  createSoundRecorder,
+  mixSounds,
+  silence,
+  encodeAudio,
+  SAMPLE_RATE,
+} from "./exportAudio.js";
 
 const STEP_DURATION = 30;
 const STEPS_PER_SEC = 30;
@@ -311,6 +319,7 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
     bitrate = 16_000_000,
     startStep = 0,
     endStep: clipEnd = null,
+    audio = true, // mix the game's sounds into the MP4 (see exportAudio.js)
   } = {}) {
     const e = engine.current;
     if (!e || typeof VideoEncoder === "undefined") {
@@ -330,13 +339,28 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
     const realPerfNow = performance.now.bind(performance);
     const realDateNow = Date.now.bind(Date);
 
-    let core, handler, container;
+    let core, handler, container, wasMuted;
 
     try {
       // 2) Fully isolated core — never repoints the live renderer's pointers.
       core = await loadBonkCore({ box2d, headless: false });
+      // loadBonkCore caches one core, so the live player shares core.game:
+      // remember its mute state and put it back afterwards.
+      wasMuted = core.game.mute;
       globalThis.__bonkPatchGame?.(core);
       core.game.mute = true; // silence the export core during the fast render
+
+      // Sound: null when the browser can't encode audio (video only, as before)
+      // or when the caller turned it off.
+      let sound = null;
+      if (audio) {
+        try {
+          sound = await prepareExportAudio();
+          if (!sound) console.warn("MP4 export: this browser can't encode audio; exporting video only.");
+        } catch (err) {
+          console.warn("MP4 export: audio setup failed; exporting video only.", err);
+        }
+      }
 
       const W = Math.round(width * scale),
         H = Math.round(height * scale);
@@ -368,6 +392,9 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
       const muxer = new Muxer({
         target: new ArrayBufferTarget(),
         video: { codec: "avc", width: W, height: H },
+        ...(sound && {
+          audio: { codec: sound.codec.muxer, numberOfChannels: 2, sampleRate: SAMPLE_RATE },
+        }),
         fastStart: "in-memory",
       });
       const encoder = new VideoEncoder({
@@ -394,8 +421,16 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
       const frameDurUs = 1e6 / fps;
       const totalFrames = Math.ceil((cap - first || 1) / stepsPerFrame);
 
+      // Sounds the renderer asks for are recorded with their time in the
+      // video. The recorder is only installed for the export's own render
+      // calls, so the live player (same core.game) is never recorded and can
+      // never replace it mid-export.
+      let videoTime = 0;
+      const recorder = sound && createSoundRecorder({ now: () => videoTime, buffers: sound.buffers });
+
       for (let f = 0; f < totalFrames; f++) {
         performance.__v = f * frameMs; // virtual time for THIS frame
+        videoTime = (f * frameMs) / 1000;
         const playhead = first + f * stepsPerFrame;
         const whole = Math.min(Math.floor(playhead), cap);
         const t = playhead - whole;
@@ -403,14 +438,20 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
         const cur = e.steps[whole];
         if (cur) {
           const prev = e.steps[Math.max(0, whole - 1)] ?? cur;
-          handler.render(
-            prev,
-            cur,
-            t,
-            e.replay.gameSettings,
-            e.resolver.at(whole),
-            whole
-          );
+          const liveSoundManager = core.game.soundManager;
+          if (recorder) core.game.soundManager = recorder;
+          try {
+            handler.render(
+              prev,
+              cur,
+              t,
+              e.replay.gameSettings,
+              e.resolver.at(whole),
+              whole
+            );
+          } finally {
+            core.game.soundManager = liveSoundManager;
+          }
 
           const frame = new VideoFrame(exportCanvas, {
             timestamp: Math.round(f * frameDurUs),
@@ -425,6 +466,21 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
       }
 
       await encoder.flush();
+
+      if (sound) {
+        const seconds = (totalFrames * frameMs) / 1000;
+        let mix;
+        try {
+          mix = await mixSounds(recorder.events, sound.buffers, seconds);
+        } catch (err) {
+          // The muxer already expects an audio track, so give it silence.
+          console.warn("MP4 export: mixing audio failed; the video will be silent.", err);
+          mix = silence(seconds);
+        }
+        await encodeAudio(mix, sound.codec, (chunk, meta) => muxer.addAudioChunk(chunk, meta));
+        console.info(`MP4 export: ${recorder.events.length} sounds, ${sound.codec.muxer} audio`);
+      }
+
       muxer.finalize();
 
       const blob = new Blob([muxer.target.buffer], { type: "video/mp4" });
@@ -453,6 +509,7 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
       try {
         container?.remove();
       } catch {}
+      if (core && wasMuted !== undefined) core.game.mute = wasMuted;
       setExportPct(null);
     }
   }
@@ -486,10 +543,11 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
     const realPerfNow = performance.now.bind(performance);
     const realDateNow = Date.now.bind(Date);
 
-    let core, handler, container;
+    let core, handler, container, wasMuted;
 
     try {
       core = await loadBonkCore({ box2d, headless: false });
+      wasMuted = core.game.mute; // shared with the live player; restored below
       globalThis.__bonkPatchGame?.(core);
       core.game.mute = true;
 
@@ -588,6 +646,7 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
       try {
         container?.remove();
       } catch {}
+      if (core && wasMuted !== undefined) core.game.mute = wasMuted;
       setGifExportPct(null);
     }
   }

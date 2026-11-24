@@ -2,11 +2,12 @@
 // with no UI around it and exposes one function to the script driving
 // Chrome (server/render-video.mjs):
 //
-//   await window.renderReplay(decodedReplay, { fps, scale, bitrate, startStep, endStep })
+//   await window.renderReplay(decodedReplay, { fps, scale, bitrate, startStep, endStep, audio })
 //   -> { base64, bytes, frames, ms }
 //
 // It reuses ReplayPlayer's own MP4 export, so a video looks exactly like
-// the replay on the site.
+// the replay on the site. The game's sounds are mixed in unless `audio` is
+// false (see browser/exportAudio.js).
 import React, { createRef } from "react";
 import { createRoot } from "react-dom/client";
 import box2d from "../vendor/box2d.esm.js";
