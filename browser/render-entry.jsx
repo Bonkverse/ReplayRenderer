@@ -2,11 +2,12 @@
 // with no UI around it and exposes one function to the script driving
 // Chrome (server/render-video.mjs):
 //
-//   await window.renderReplay(decodedReplay, { fps, scale, bitrate, startStep, endStep })
+//   await window.renderReplay(decodedReplay, { fps, scale, bitrate, startStep, endStep, audio })
 //   -> { base64, bytes, frames, ms }
 //
 // It reuses ReplayPlayer's own MP4 export, so a video looks exactly like
-// the replay on the site.
+// the replay on the site. The game's sounds are mixed in unless `audio` is
+// false (see browser/exportAudio.js).
 import React, { createRef } from "react";
 import { createRoot } from "react-dom/client";
 import box2d from "../vendor/box2d.esm.js";
@@ -52,7 +53,10 @@ window.renderReplay = async (decoded, options = {}) => {
   const failed = new Promise((_, reject) => {
     window.alert = (msg) => reject(new Error(String(msg)));
   });
-  await new Promise((r) => setTimeout(r, 500)); // let the player finish its setup
+  // Wait for the player to finish loading the replay. A fixed delay wasn't
+  // always enough (e.g. slower machines), and exporting too early fell back
+  // to the canvas-recording path, which fails with "No replay canvas found".
+  await waitFor(() => ref.current?.isReady?.(), 30_000);
   ref.current.exportMp4(options);
   const blob = await Promise.race([video, failed]);
   return { base64: await blobToBase64(blob), bytes: blob.size, ms: Math.round(performance.now() - started) };

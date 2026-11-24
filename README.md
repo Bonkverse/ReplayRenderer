@@ -24,7 +24,8 @@ replay-renderer/
 │   ├── thumb.worker.js     grid thumbnails off-thread + IndexedDB cache
 │   ├── thumbClient.js      singleton worker + promise API
 │   ├── ReplayGrid.jsx      lazy IntersectionObserver thumbnails
-│   └── ReplayPlayer.jsx    live player on CanvasHandler + scrubber
+│   ├── ReplayPlayer.jsx    live player on CanvasHandler + scrubber
+│   └── exportAudio.js      records + mixes the game's sounds for the MP4 export
 │
 ├── server/                NODE (build steps + dev harness)
 │   ├── build-core.mjs      alpha2s.js  -> vendor/bonk-core.mjs
