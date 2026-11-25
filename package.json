@@ -15,7 +15,7 @@
     "api": "node server/dev-api.mjs",
     "build": "vite build",
     "start": "node server/prod-server.mjs",
-    "test": "node --test test/*.test.mjs",
+    "test": "node --test --test-concurrency=1 test/*.test.mjs",
     "start:render": "node server/render-server.mjs"
   },
   "dependencies": {

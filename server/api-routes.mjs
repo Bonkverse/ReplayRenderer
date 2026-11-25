@@ -545,6 +545,15 @@ export async function loadReplay(pool, id, cycle = null) {
   };
 }
 
+export const DEFAULT_STATEMENT_TIMEOUT_MS = 15_000;
+
+export function statementTimeoutMs(env = process.env) {
+  const raw = env.DB_STATEMENT_TIMEOUT_MS;
+  if (raw === undefined || raw === "") return DEFAULT_STATEMENT_TIMEOUT_MS;
+  const ms = Number(raw);
+  return Number.isInteger(ms) && ms >= 0 ? ms : DEFAULT_STATEMENT_TIMEOUT_MS;
+}
+
 export function createPool(Pool) {
   if (!process.env.DATABASE_URL) {
     throw new Error("DATABASE_URL is not set");
@@ -553,6 +562,13 @@ export function createPool(Pool) {
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     max: 10,
+    // Every query is public or bot-facing, and the pool has 10 connections: a
+    // few slow searches (negated rules, regex patterns, a busy player's
+    // profile) could hold all of them, stalling the site, the sync with
+    // bonkverse.io and BonxBot. Postgres cancels a statement after this long
+    // (error 57014, which sendDbError answers with 504 "took too long").
+    // DB_STATEMENT_TIMEOUT_MS overrides it; 0 turns it off.
+    statement_timeout: statementTimeoutMs(),
   });
 
   pool.on("error", (err) => {
