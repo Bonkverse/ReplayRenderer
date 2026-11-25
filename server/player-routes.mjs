@@ -448,8 +448,12 @@ export function registerPlayerRoutes(app, pool, { enrichKeys, sendDbError }) {
   //      anything down; the exact match uses the plain name index instead.
   app.get("/api/players", async (req, res) => {
     const q = String(req.query.q ?? "");
+    // Length first: / +$/ is quadratic on a long run of spaces followed by
+    // something else, and q is up to a 16 KB URL (16k spaces took ~0.3 s,
+    // blocking the whole server). Capped at 100 characters it's nothing.
+    if (q.length > MAX_NAME_LENGTH) return res.json({ results: [] });
     const name = q.replace(/ +$/, "");
-    if (!name || q.length > MAX_NAME_LENGTH) return res.json({ results: [] });
+    if (!name) return res.json({ results: [] });
 
     const likeSafe = (s) => s.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
     const summary = (where) => `
