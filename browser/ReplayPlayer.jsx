@@ -11,6 +11,7 @@ import {
   encodeAudio,
   SAMPLE_RATE,
 } from "./exportAudio.js";
+import { isValidAvcC, repairAvcC } from "./avcConfig.js";
 
 const STEP_DURATION = 30;
 const STEPS_PER_SEC = 30;
@@ -493,6 +494,23 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
         }),
         fastStart: "in-memory",
       });
+      // Firefox's encoder returns a malformed avcC (decoder config), which
+      // makes Android show a black screen. Rebuild it from the keyframe's own
+      // SPS/PPS. A valid one (Chrome's) is kept as is. See avcConfig.js.
+      for (const entry of videoChunks) {
+        const [chunk, meta] = entry;
+        const config = meta?.decoderConfig;
+        if (!config?.description || isValidAvcC(config.description)) continue;
+        const bytes = new Uint8Array(chunk.byteLength);
+        chunk.copyTo(bytes);
+        const fixed = repairAvcC(config.description, bytes);
+        if (fixed) {
+          entry[1] = { ...meta, decoderConfig: { ...config, description: fixed } };
+          console.info("MP4 export: repaired the browser's malformed H.264 decoder config");
+        } else {
+          console.warn("MP4 export: malformed H.264 decoder config; couldn't repair it");
+        }
+      }
       for (const [chunk, meta] of videoChunks) muxer.addVideoChunk(chunk, meta);
       for (const [chunk, meta] of audioChunks ?? []) muxer.addAudioChunk(chunk, meta);
       muxer.finalize();
