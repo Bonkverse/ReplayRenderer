@@ -692,21 +692,6 @@ const ReplayPlayer = forwardRef(function ReplayPlayer({
       setStep(0);
       setEndStep(1);
 
-      globalThis.SafeTrig ??= {};
-      Object.assign(globalThis.SafeTrig, {
-        safeSin: Math.sin,
-        safeCos: Math.cos,
-        safeTan: Math.tan,
-        safeAsin: Math.asin,
-        safeAcos: Math.acos,
-        safeAtan: Math.atan,
-        safeAtan2: Math.atan2,
-        safeASin: Math.asin,
-        safeACos: Math.acos,
-        safeATan: Math.atan,
-        safeATan2: Math.atan2,
-      });
-
       const core = await loadBonkCore({ box2d, headless: false });
       globalThis.__bonkPatchGame?.(core);
       core.game.mute = false;
