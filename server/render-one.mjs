@@ -18,25 +18,6 @@ import { simulateTrajectory } from "../core/sim.js";
 import { renderTrailThumbnail, encodeThumbnail } from "../core/trail.js";
 import { decodeStoredReplay } from "./codec.js";
 
-globalThis.SafeTrig ??= {};
-
-Object.assign(globalThis.SafeTrig, {
-  safeSin: Math.sin,
-  safeCos: Math.cos,
-  safeTan: Math.tan,
-
-  safeAsin: Math.asin,
-  safeAcos: Math.acos,
-  safeAtan: Math.atan,
-  safeAtan2: Math.atan2,
-
-  safeASin: Math.asin,
-  safeACos: Math.acos,
-  safeATan: Math.atan,
-  safeATan2: Math.atan2,
-});
-
-
 if (!existsSync("./vendor/bonk-core.mjs")) { console.error("Run build-core.mjs first."); process.exit(1); }
 console.log("box2d:", typeof box2d?.Dynamics?.b2World === "function" ? "OK" : "?? (check wrap-box2d output)");
 

@@ -9,9 +9,11 @@
 //   nextStep()  -> O(1) amortized, for the forward sim loop
 //   at(step)    -> O(log k) binary search, for scrubbing on the detail page
 
-const NEUTRAL = Object.freeze({
-  left: false, right: false, up: false, down: false, action: false, action2: false,
-});
+// A player with no recorded input yet gets `undefined`, exactly like bonk's
+// getInputs(). Don't substitute an "all keys up" object: bonk's physics treats
+// "has an input object" differently from "no input" (e.g. it still runs the
+// movement block and recharges the action meter), so that would desync.
+const NO_INPUT = undefined;
 
 export function createInputResolver(sparseInputs) {
   // For each player, collect the sorted list of steps that have a recorded change.
@@ -23,7 +25,7 @@ export function createInputResolver(sparseInputs) {
   });
 
   const cursors = players.map(() => 0);   // forward-iteration pointers
-  const current = players.map(() => NEUTRAL);
+  const current = players.map(() => NO_INPUT);
   let curStep = -1;
 
   function nextStep() {
@@ -45,14 +47,14 @@ export function createInputResolver(sparseInputs) {
     const out = [];
     for (let id = 0; id < players.length; id++) {
       const p = players[id];
-      if (!p) { out[id] = NEUTRAL; continue; }
+      if (!p) { out[id] = NO_INPUT; continue; }
       // binary search rightmost steps[k] <= step
       let lo = 0, hi = p.steps.length - 1, found = -1;
       while (lo <= hi) {
         const mid = (lo + hi) >> 1;
         if (p.steps[mid] <= step) { found = mid; lo = mid + 1; } else hi = mid - 1;
       }
-      out[id] = found === -1 ? NEUTRAL : p.data[p.steps[found]];
+      out[id] = found === -1 ? NO_INPUT : p.data[p.steps[found]];
     }
     return out;
   }
@@ -66,7 +68,7 @@ export function createInputResolver(sparseInputs) {
       let k = 0;
       while (k < p.steps.length && p.steps[k] <= step) k++;
       cursors[id] = k;
-      current[id] = k === 0 ? NEUTRAL : p.data[p.steps[k - 1]];
+      current[id] = k === 0 ? NO_INPUT : p.data[p.steps[k - 1]];
     }
   }
 

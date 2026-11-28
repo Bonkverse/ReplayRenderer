@@ -1,5 +1,7 @@
 // core/physics-loader.js
 
+import { installSafeTrig } from "./safe-trig.js";
+
 let _core = null;
 
 function makeStub() {
@@ -117,6 +119,9 @@ export async function loadBonkCore({ box2d, headless = false } = {}) {
   if (headless) {
     installHeadlessStubs(globalThis);
   }
+
+  // bonk's physics needs its exact rounded trig or replays drift (see safe-trig.js).
+  installSafeTrig(globalThis);
 
   const { createBonkCore } = await import("../vendor/bonk-core.mjs");
 
